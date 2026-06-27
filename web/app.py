@@ -1,23 +1,32 @@
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 import aiosqlite
+from core.database import init_commercial_db  # 👈 اضافه شدن ساختار دیتابیس
 
 app = FastAPI(title="ZarVpn Advance Admin Dashboard")
 
+# این تابع به محض روشن شدن پنل وب، دیتابیس تجاری و پلن‌ها را می‌سازد
+@app.on_event("startup")
+async def startup_event():
+    await init_commercial_db()
+
 @app.get("/", response_class=HTMLResponse)
 async def admin_dashboard():
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        # دریافت آمار از دیتابیس واقعی ربات
-        async with db.execute("SELECT COUNT(*), SUM(balance) FROM users") as c:
-            u_info = await c.fetchone()
-            total_users = u_info[0] or 0
-            total_balance = u_info[1] or 0
-            
-        async with db.execute("SELECT COUNT(*) FROM orders") as c:
-            total_orders = (await c.fetchone())[0] or 0
-            
-        async with db.execute("SELECT user_id, username, balance FROM users ORDER BY created_at DESC LIMIT 10") as c:
-            latest_users = await c.fetchall()
+    try:
+        async with aiosqlite.connect("zarvpn_web.db") as db:
+            # دریافت آمار از دیتابیس واقعی ربات
+            async with db.execute("SELECT COUNT(*), SUM(balance) FROM users") as c:
+                u_info = await c.fetchone()
+                total_users = u_info[0] or 0
+                total_balance = u_info[1] or 0
+                
+            async with db.execute("SELECT COUNT(*) FROM orders") as c:
+                total_orders = (await c.fetchone())[0] or 0
+                
+            async with db.execute("SELECT user_id, username, balance FROM users ORDER BY created_at DESC LIMIT 10") as c:
+                latest_users = await c.fetchall()
+    except Exception as e:
+        return f"<h3>خطا در خواندن دیتابیس: {str(e)}</h3>"
 
     # طراحی پنل گرافیکی مدرن و راست‌چین
     html_content = f"""
@@ -65,7 +74,7 @@ async def admin_dashboard():
             <table>
                 <thead>
                     <tr>
-                        <th>آیدی عددی تلگرام</th>
+                        <th>آیدی عددی tel</th>
                         <th>نام کاربری</th>
                         <th>موجودی کیف پول</th>
                     </tr>
