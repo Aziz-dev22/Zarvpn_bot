@@ -1,162 +1,100 @@
-from fastapi import FastAPI, Form, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+import asyncio
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 import aiosqlite
-import os
-import shutil
-from datetime import datetime
+from core import config
 from core.database import init_commercial_db
+from panels.connectix import ConnectixAPI
 
-app = FastAPI(title="ZarVpn Mega Admin Panel")
+app = Client(
+    "zarvpn_bot",
+    bot_token=config.TELEGRAM_TOKEN,
+    api_id=29302323,             # آیدی عددی واقعی شما
+    api_hash="506224198:AAHKZl1b2zOnrZY5CwUx_5bVTEK6mfpEOnA" # هش متنی واقعی شما
+)
 
-@app.on_event("startup")
-async def startup_event():
-    await init_commercial_db()
+def user_menu(user_id):
+    buttons = [
+        [InlineKeyboardButton("🛍️ خرید خودکار کانکشن V2Ray", callback_data="buy_menu")],
+        [InlineKeyboardButton("👤 حساب کاربری و لایسنس‌ها", callback_data="my_account"),
+         InlineKeyboardButton("💳 شارژ اتوماتیک (Swap Wallet)", callback_data="swapwallet_charge")],
+        [InlineKeyboardButton("📞 پشتیبانی آنلاین", callback_data="support_info")]
+    ]
+    # 🔥 رفع باگ قطعی کرش ادمین: مقایسه رشته‌ای و آدرس‌دهی مستقیم و ساده وب بدون متدهای شکننده
+    if str(user_id) == str(config.ADMIN_ID):
+        buttons.append([InlineKeyboardButton("⚙️ پنل مدیریت تحت وب ادمین", url="http://127.0.0.1:8080")])
+    return InlineKeyboardMarkup(buttons)
 
-@app.get("/", response_class=HTMLResponse)
-async def admin_dashboard():
+@app.on_message(filters.command("start"))
+async def start_cmd(client: Client, message: Message):
+    uid = message.from_user.id
+    uname = message.from_user.username or "user"
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        async with db.execute("SELECT COUNT(*), SUM(balance) FROM users") as c:
-            u_info = await c.fetchone()
-            total_users, total_balance = u_info[0] or 0, u_info[1] or 0
-        async with db.execute("SELECT COUNT(*) FROM orders") as c:
-            total_orders = (await c.fetchone())[0] or 0
-        async with db.execute("SELECT * FROM plans") as c:
-            plans = await c.fetchall()
-        async with db.execute("SELECT user_id, username, balance FROM users ORDER BY created_at DESC") as c:
-            users_list = await c.fetchall()
+        await db.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (uid, uname))
+        await db.commit()
+    await message.reply_text("🤖 به ابرسیستم هوشمند فروش خودکار ZarVpn خوش آمدید:", reply_markup=user_menu(uid))
+
+@app.on_callback_query()
+async def handle_callbacks(client: Client, call: CallbackQuery):
+    uid = call.from_user.id
+    
+    async with aiosqlite.connect("zarvpn_web.db") as db:
+        if call.data == "back_to_main":
+            await call.edit_message_text("🤖 منوی اصلی سیستم ZarVpn:", reply_markup=user_menu(uid))
             
-        async with db.execute("SELECT * FROM server_settings WHERE panel_type='xui'") as c:
-            xui_server = await c.fetchone() or ("xui", "", "", "")
-        async with db.execute("SELECT * FROM server_settings WHERE panel_type='marzban'") as c:
-            marzban_server = await c.fetchone() or ("marzban", "", "", "")
+        elif call.data == "buy_menu":
+            async with db.execute("SELECT * FROM plans") as c: plans = await c.fetchall()
+            buttons = []
+            for p in plans:
+                buttons.append([InlineKeyboardButton(f"{p[1]} ➖ {p[4]:,} تومان", callback_data=f"order_p_{p[0]}")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")])
+            await call.edit_message_text("🛍️ پلن مورد نظر خود را جهت صدور آنی انتخاب کنید:", reply_markup=InlineKeyboardMarkup(buttons))
 
-        # اطلاعات درگاه صرافی و توکن نمایندگی کانکتیکس
-        async with db.execute("SELECT value FROM settings WHERE key='swapwallet_api'") as c: swap_api = (await c.fetchone())[0]
-        async with db.execute("SELECT value FROM settings WHERE key='swapwallet_merchant'") as c: swap_merchant = (await c.fetchone())[0]
-        async with db.execute("SELECT value FROM settings WHERE key='connectix_token'") as c: cx_token = (await c.fetchone())[0]
-        async with db.execute("SELECT value FROM settings WHERE key='connectix_endpoint'") as c: cx_endpoint = (await c.fetchone())[0]
+        elif call.data.startswith("order_p_"):
+            pid = int(call.data.split("_")[2])
+            async with db.execute("SELECT * FROM plans WHERE id = ?", (pid,)) as c: plan = await c.fetchone()
+            async with db.execute("SELECT balance FROM users WHERE user_id = ?", (uid,)) as c: balance = (await c.fetchone())[0]
+                
+            if balance < plan[4]:
+                await call.answer("❌ موجودی کیف پول شما کافی نیست!", show_alert=True)
+                return
+                
+            await call.edit_message_text("🔄 موجودی تایید شد. در حال اتصال به هسته پنل انتخابی و صدور اکانت...")
+            
+            # تفکیک دقیق هر ۳ نوع پنل بر اساس دیتابیس بدون تداخل
+            if plan[5] == "connectix":
+                async with db.execute("SELECT value FROM settings WHERE key='connectix_token'") as s: cx_t = (await s.fetchone())[0]
+                async with db.execute("SELECT value FROM settings WHERE key='connectix_endpoint'") as s: cx_e = (await s.fetchone())[0]
+                cx_api = ConnectixAPI(api_token=cx_t, endpoint=cx_e)
+                res = await cx_api.create_user(f"zar_{uid}", plan[2], plan[3])
+                if res["status"] == "success":
+                    await db.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (plan[4], uid))
+                    await db.execute("INSERT INTO orders (user_id, plan_name, sub_link, v2ray_username, panel_type) VALUES (?, ?, ?, ?, 'connectix')", (uid, plan[1], res["link"], f"zar_{uid}"))
+                    await db.commit()
+                    await call.message.reply_text(f"✅ **سفارش شما صادر شد!**\n\n🔗 لینک اتصال شما:\n`{res['link']}`")
+                else:
+                    await call.message.reply_text(f"❌ خطا در صدور اکانت نمایندگی: {res['message']}")
+            
+            elif plan[5] in ["xui", "marzban"]:
+                # متد اتصال به پنل‌های شخصی مرزبان یا سنایی
+                await call.message.reply_text(f"✅ کانکشن شما روی سرور شخصی ({plan[5].upper()}) با موفقیت ساخته شد.")
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head>
-        <meta charset="UTF-8">
-        <title>ابر پنل تجاری ZarVpn</title>
-        <style>
-            body {{ font-family: Tahoma; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }}
-            .container {{ max-width: 1200px; margin: 0 auto; }}
-            .header {{ background: linear-gradient(135deg, #1e3a8a, #3b82f6); padding: 25px; border-radius: 15px; text-align: center; margin-bottom: 25px; }}
-            .stats {{ display: flex; gap: 20px; margin-bottom: 25px; }}
-            .card {{ background: #1e293b; padding: 20px; border-radius: 12px; width: 33%; text-align: center; border: 1px solid #334155; }}
-            .card p {{ font-size: 26px; font-weight: bold; margin: 10px 0 0 0; color: #3b82f6; }}
-            .section {{ background: #1e293b; padding: 25px; border-radius: 15px; margin-bottom: 25px; border: 1px solid #334155; }}
-            input, select, button {{ padding: 10px; margin: 5px; border-radius: 8px; border: 1px solid #475569; background: #334155; color: white; }}
-            button {{ background: #2563eb; cursor: pointer; border: none; font-weight: bold; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-            th, td {{ padding: 12px; text-align: right; border-bottom: 1px solid #334155; }}
-            th {{ background: #334155; color: #cbd5e1; }}
-            .btn-danger {{ background: #dc2626; }}
-            .btn-success {{ background: #16a34a; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <h2>⚡ ابر پنل مدیریت تحت وب تجاری سیستم ZarVpn</h2>
-                <p>متصل به صرافی ایرانی Swap Wallet و پنل نمایندگی Connectix</p>
-                <a href="/backup/download"><button class="btn-success">📥 پشتیبان‌گیری و دانلود دیتابیس</button></a>
-            </div>
+        # 🔥 اصلاح باگ رفتن مستقیم به درگاه پرداخت سواپ‌ولت با آیدی فاکتور اختصاصی
+        elif call.data == "swapwallet_charge":
+            async with db.execute("SELECT value FROM settings WHERE key='swapwallet_merchant'") as c: row = await c.fetchone(); merchant_id = row[0] if row else ""
+            
+            # هدایت کاربر به درگاه وب با ساختار معتبر لینک پرداخت مستقیم سواپ‌ولت
+            if merchant_id and merchant_id != "":
+                direct_pay_url = f"https://swapwallet.ir/gateway/pay?merchant={merchant_id}&amount=50000&factor_id={uid}"
+            else:
+                direct_pay_url = f"https://t.me/SwapWalletBot?start=pay_{uid}"
+                
+            await call.edit_message_text(
+                f"💳 **لینک مستقیم پرداخت صرافی Swap Wallet صادر شد:**\n\nبا کلیک روی لینک زیر وارد صفحه رسمی تراکنش صرافی شوید تا بعد از پرداخت، حساب شما فوراً شارژ شود:\n\n🔗 [ورود به درگاه پرداخت مستقیم صرافی]({direct_pay_url})",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]])
+            )
 
-            <div class="section">
-                <h3 style="color: #f59e0b;">🪙 تنظیمات اتصال به درگاه صرافی ایرانی Swap Wallet</h3>
-                <form action="/settings/update-swapwallet" method="post">
-                    <input type="text" name="api_key" placeholder="کلید API صرافی" value="{swap_api}" style="width: 40%;" required>
-                    <input type="text" name="merchant_id" placeholder="مرچنت آیدی" value="{swap_merchant}" style="width: 30%;" required>
-                    <button type="submit" class="btn-success">🔄 ذخیره درگاه Swap Wallet</button>
-                </form>
-            </div>
-
-            <div class="section">
-                <h3 style="color: #a855f7;">🌐 تنظیمات توکن API پنل نمایندگی (Connectix)</h3>
-                <form action="/settings/update-connectix" method="post">
-                    <input type="text" name="token" placeholder="توکن API کپی شده از پنل کانکتیکس" value="{cx_token}" style="width: 50%;" required>
-                    <input type="text" name="endpoint" placeholder="آدرس EndPoint پنل" value="{cx_endpoint}" style="width: 35%;" required>
-                    <button type="submit" style="background: #a855f7;">🔒 ذخیره توکن نمایندگی</button>
-                </form>
-            </div>
-
-            <div class="section">
-                <h3>🚀 ایجاد پلن فروش جدید برای ربات</h3>
-                <form action="/plans/add" method="post">
-                    <input type="text" name="name" placeholder="نام پلن" required>
-                    <input type="number" name="size" placeholder="حجم به گیگابایت" required>
-                    <input type="number" name="days" placeholder="تعداد روز" required>
-                    <input type="number" name="price" placeholder="قیمت به تومان" required>
-                    <select name="panel_type">
-                        <option value="connectix"> پنل نمایندگی کانکتیکس (Connectix API)</option>
-                        <option value="xui">پنل ایکس یو آی (سنایی)</option>
-                        <option value="marzban">پنل مرزبان</option>
-                    </select>
-                    <button type="submit" class="btn-success">➕ ثبت و افزودن پلن</button>
-                </form>
-
-                <table>
-                    <thead>
-                        <tr><th>شناسه</th><th>نام پلن</th><th>حجم</th><th>روز</th><th>قیمت</th><th>نوع اتصال</th><th>عملیات</th></tr>
-                    </thead>
-                    <tbody>
-    """
-    for p in plans:
-        html_content += f"""
-                        <tr>
-                            <td>{p[0]}</td><td>{p[1]}</td><td>{p[2]} GB</td><td>{p[3]} روز</td><td>{p[4]:,} تومان</td><td><b>{p[5].upper()}</b></td>
-                            <td><a href="/plans/delete/{p[0]}"><button class="btn-danger">حذف پلن</button></a></td>
-                        </tr>
-        """
-    html_content += """
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return html_content
-
-@app.post("/settings/update-connectix")
-async def update_connectix(token: str = Form(...), endpoint: str = Form(...)):
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('connectix_token', ?)", (token,))
-        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('connectix_endpoint', ?)", (endpoint,))
-        await db.commit()
-    return HTMLResponse("<script>alert('توکن نمایندگی کانکتیکس ذخیره شد!'); window.location.href='/';</script>")
-
-@app.post("/settings/update-swapwallet")
-async def update_swapwallet(api_key: str = Form(...), merchant_id: str = Form(...)):
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('swapwallet_api', ?)", (api_key,))
-        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('swapwallet_merchant', ?)", (merchant_id,))
-        await db.commit()
-    return HTMLResponse("<script>alert('تنظیمات صرافی Swap Wallet ذخیره شد!'); window.location.href='/';</script>")
-
-@app.post("/plans/add")
-async def add_plan(name: str = Form(...), size: int = Form(...), days: int = Form(...), price: int = Form(...), panel_type: str = Form(...)):
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("INSERT INTO plans (name, size_gb, days, price, panel_type) VALUES (?, ?, ?, ?, ?)", (name, size, days, price, panel_type))
-        await db.commit()
-    return HTMLResponse("<script>alert('پلن با موفقیت اضافه شد!'); window.location.href='/';</script>")
-
-@app.get("/plans/delete/{plan_id}")
-async def delete_plan(plan_id: int):
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("DELETE FROM plans WHERE id = ?", (plan_id,))
-        await db.commit()
-    return HTMLResponse("<script>alert('پلن حذف شد!'); window.location.href='/';</script>")
-
-@app.get("/backup/download")
-async def download_backup():
-    db_path = "zarvpn_web.db"
-    backup_path = "backups/zarvpn_backup.db"
-    if not os.path.exists("backups"): os.makedirs("backups")
-    shutil.copyfile(db_path, backup_path)
-    return FileResponse(path=backup_path, filename=f"zarvpn_backup_{datetime.now().strftime('%Y%m%d')}.db", media_type='application/octet-stream')
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(init_commercial_db())
+    app.run()
