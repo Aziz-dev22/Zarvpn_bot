@@ -2,76 +2,82 @@ import telebot
 from telebot import types
 import config
 
-# راه‌اندازی ربات با توکن امن
 bot = telebot.TeleBot(config.TELEGRAM_TOKEN)
+
+# ساخت دکمه‌های شیشه‌ای منوی اصلی
+def get_main_inline_keyboard(user_id):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    
+    btn_buy = types.InlineKeyboardButton("🛍️ خرید اشتراک", callback_data="buy_sub")
+    btn_profile = types.InlineKeyboardButton("👤 حساب کاربری", callback_data="user_profile")
+    btn_test = types.InlineKeyboardButton("🔗 تست رایگان", callback_data="get_test")
+    btn_support = types.InlineKeyboardButton("📞 پشتیبانی", callback_data="support")
+    
+    markup.add(btn_buy, btn_profile)
+    markup.add(btn_test, btn_support)
+    
+    # اگر کاربر ادمین بود، دکمه شیشه‌ای مدیریت را اضافه کن
+    if user_id == config.ADMIN_ID:
+        btn_admin = types.InlineKeyboardButton("⚙️ پنل مدیریت ادمین", callback_data="admin_panel")
+        markup.add(btn_admin)
+        
+    return markup
+
+# ساخت دکمه‌های شیشه‌ای داخل پنل مدیریت
+def get_admin_inline_keyboard():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn_stats = types.InlineKeyboardButton("📊 آمار ربات", callback_data="admin_stats")
+    btn_back = types.InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_to_main")
+    markup.add(btn_stats, btn_back)
+    return markup
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    user_id = message.from_user.id
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    
-    # دکمه‌های منوی اصلی کاربران
-    btn1 = types.KeyboardButton("🛍️ خرید اشتراک")
-    btn2 = types.KeyboardButton("👤 حساب کاربری")
-    btn3 = types.KeyboardButton("🔗 دریافت تست رایگان")
-    btn4 = types.KeyboardButton("📞 پشتیبانی")
-    
-    markup.add(btn1, btn2)
-    markup.add(btn3, btn4)
-    
-    # اگر کاربر ادمین بود، دکمه مدیریت را هم نشان بده
-    if user_id == config.ADMIN_ID:
-        btn_admin = types.KeyboardButton("⚙️ پنل مدیریت")
-        markup.add(btn_admin)
-
     bot.send_message(
         message.chat.id, 
-        "سلام! به ربات ZarVpn خوش آمدید. لطفاً یک گزینه را انتخاب کنید:", 
-        reply_markup=markup
+        "🤖 به ربات ZarVpn خوش آمدید.\nلطفاً یکی از گزینه‌های شیشه‌ای زیر را انتخاب کنید:", 
+        reply_markup=get_main_inline_keyboard(message.from_user.id)
     )
 
-@bot.message_handler(func=lambda message: message.text == "🛍️ خرید اشتراک")
-def buy_subscription(message):
-    bot.send_message(message.chat.id, "🔄 لیست پلن‌های VPN به‌زودی بارگذاری می‌شود...")
+# مدیریت کلیک روی دکمه‌های شیشه‌ای (Callback Queries)
+@bot.callback_query_handler(func=lambda call: True)
+def callback_listener(call):
+    user_id = call.from_user.id
+    
+    # دکمه خرید اشتراک
+    if call.data == "buy_sub":
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "🔄 لیست پلن‌های VPN به‌زودی بارگذاری می‌شود...")
+        
+    # دکمه پنل مدیریت
+    elif call.data == "admin_panel":
+        bot.answer_callback_query(call.id)
+        if user_id == config.ADMIN_ID:
+            bot.edit_message_text(
+                "⚙️ به پنل مدیریت ZarVpn خوش آمدید:",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                reply_markup=get_admin_inline_keyboard()
+            )
+        else:
+            bot.send_message(call.message.chat.id, "❌ شما دسترسی به این بخش را ندارید!")
+            
+    # دکمه آمار ربات در پنل مدیریت
+    elif call.data == "admin_stats":
+        bot.answer_callback_query(call.id)
+        if user_id == config.ADMIN_ID:
+            text = "📈 آمار ربات شما:\n\n👥 تعداد کل کاربران: ۱ نفر\n💰 کل درآمد امروز: ۰ تومان"
+            bot.send_message(call.message.chat.id, text)
+            
+    # دکمه بازگشت به منوی اصلی
+    elif call.data == "back_to_main":
+        bot.answer_callback_query(call.id)
+        bot.edit_message_text(
+            "🤖 به منوی اصلی ZarVpn برگشتید:",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=get_main_inline_keyboard(user_id)
+        )
 
-print("🚀 ربات ZarVpn با موفقیت روشن شد...")
+print("🚀 ربات با دکمه‌های شیشه‌ای روشن شد...")
 bot.infinity_polling()
-import telebot
-from telebot import types
-import config
-
-# راه‌اندازی ربات با توکن امن
-bot = telebot.TeleBot(config.TELEGRAM_TOKEN)
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    user_id = message.from_user.id
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    
-    # دکمه‌های منوی اصلی کاربران
-    btn1 = types.KeyboardButton("🛍️ خرید اشتراک")
-    btn2 = types.KeyboardButton("👤 حساب کاربری")
-    btn3 = types.KeyboardButton("🔗 دریافت تست رایگان")
-    btn4 = types.KeyboardButton("📞 پشتیبانی")
-    
-    markup.add(btn1, btn2)
-    markup.add(btn3, btn4)
-    
-    # اگر کاربر ادمین بود، دکمه مدیریت را هم نشان بده
-    if user_id == config.ADMIN_ID:
-        btn_admin = types.KeyboardButton("⚙️ پنل مدیریت")
-        markup.add(btn_admin)
-
-    bot.send_message(
-        message.chat.id, 
-        "سلام! به ربات ZarVpn خوش آمدید. لطفاً یک گزینه را انتخاب کنید:", 
-        reply_markup=markup
-    )
-
-@bot.message_handler(func=lambda message: message.text == "🛍️ خرید اشتراک")
-def buy_subscription(message):
-    bot.send_message(message.chat.id, "🔄 لیست پلن‌های VPN به‌زودی بارگذاری می‌شود...")
-
-print("🚀 ربات ZarVpn با موفقیت روشن شد...")
-bot.infinity_polling()
-
