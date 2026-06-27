@@ -1,7 +1,7 @@
 import asyncio
 import nest_asyncio
 
-# اعمال پچ فیکس لوپ پایتون 3.14 در بالاترین خط ممکن
+# اعمال پچ لوپ پایتون 3.14
 try:
     loop = asyncio.get_event_loop()
 except RuntimeError:
@@ -9,11 +9,10 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 nest_asyncio.apply(loop)
 
-# ایمپورت‌های اصلی ربات
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 import aiosqlite
-from core import config  # 👈 اصلاح آدرس تنظیمات برای رفع ارور
+from core import config
 from panels.marzban import MarzbanAPI
 from panels.xui import XuiAPI
 
@@ -132,8 +131,18 @@ async def handle_callbacks(client: Client, call: CallbackQuery):
             await db.commit()
             await call.answer("✅ ۱۰۰ هزار تومان شارژ تست اضافه شد.", show_alert=True)
 
-if __name__ == "__main__":
-    loop.run_until_complete(init_async_db())
+# 🛠️ بازنویسی بخش استارت برای کپسوله‌سازی اجرا در پایتون 3.14
+async def main_runner():
+    await init_async_db()
     print("🚀 ابر ربات فروش ZarVpn (نسخه ۲) با موفقیت روی لوپ پایتون 3.14 جفت شد...")
-    loop.run_until_complete(app.start())
-    loop.run_until_complete(asyncio.Event().wait())
+    await app.start()
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    # ایجاد فرآیند به عنوان یک تسکِ استاندارد برای فرار از ارور تاین‌اوت پایتون 3.14
+    loop.create_task(main_runner())
+    try:
+        loop.run_forever()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
