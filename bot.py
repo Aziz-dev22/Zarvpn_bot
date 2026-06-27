@@ -9,11 +9,11 @@ except RuntimeError:
     asyncio.set_event_loop(loop)
 nest_asyncio.apply(loop)
 
-# حالا پیروگرام بدون مشکل لود می‌شود
+# ایمپورت‌های اصلی ربات
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 import aiosqlite
-import config
+from core import config  # 👈 اصلاح آدرس تنظیمات برای رفع ارور
 from panels.marzban import MarzbanAPI
 from panels.xui import XuiAPI
 
