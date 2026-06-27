@@ -10,7 +10,7 @@ from panels.xui import XuiAPI
 app = Client(
     "zarvpn_bot",
     bot_token=config.TELEGRAM_TOKEN,
-    api_id=123456,          # نیازی به تغییر این دو عدد نیست، پایداری داخلی است
+    api_id=123456,          # شناسه داخلی پایداری سیستم
     api_hash="abcdef"
 )
 
@@ -145,10 +145,17 @@ async def handle_callbacks(client: Client, call: CallbackQuery):
             await db.commit()
             await call.answer("✅ ۱۰۰ هزار تومان شارژ تست به حساب شما اضافه شد.", show_alert=True)
 
-# اجرای همزمان ربات و دیتابیس تحت وب
+# اجرای همزمان ربات و دیتابیس تحت وب (کاملاً سازگار با پایتون 3.14)
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
     loop.run_until_complete(init_async_db())
     print("🚀 ابر ربات فروش ZarVpn (نسخه ۲ - Pyrogram Async) روشن شد...")
-    app.run()
-
+    
+    # متد اجرای استاندارد و پایدار پایروگرام در پایتون جدید
+    loop.run_until_complete(app.start())
+    loop.run_until_complete(asyncio.Event().wait())
