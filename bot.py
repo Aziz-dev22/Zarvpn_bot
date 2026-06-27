@@ -121,13 +121,9 @@ async def handle_callbacks(client: Client, call: CallbackQuery):
             await db.commit()
             await call.answer("✅ ۱۰۰ هزار تومان شارژ تست اضافه شد.", show_alert=True)
 
-# 🛠️ ساختار استارت کاملاً بومی و منطبق بر پایتون 3.14
-async def main():
-    await init_async_db()
-    print("🚀 ابر ربات فروش ZarVpn (نسخه ۲) با موفقیت روی لایه اختصاصی پایتون 3.14 روشن شد...")
-    await app.start()
-    await asyncio.Event().wait()
-
+# استارت بهینه در پایتون 3.10
 if __name__ == "__main__":
-    # استفاده از متد مستقیم به جای مدیریت دستی لوپ
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(init_async_db())
+    print("🚀 ابر ربات فروش ZarVpn با پایتون 3.10 روشن شد...")
+    app.run()
