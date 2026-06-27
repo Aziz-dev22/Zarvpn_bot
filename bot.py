@@ -3,127 +3,127 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 import aiosqlite
 from core import config
+from core.database import init_commercial_db
 from panels.marzban import MarzbanAPI
 from panels.xui import XuiAPI
 
 app = Client(
     "zarvpn_bot",
     bot_token=config.TELEGRAM_TOKEN,
-    api_id=29302323,
-    api_hash="247e5f3f98d9fb20aab59a3a9472bcc4"
+    api_id=29302323, # آیدی عددی واقعی خودت را که گرفتی اینجا بذار
+    api_hash="247e5f3f98d9fb20aab59a3a9472bcc4" # هش واقعی خودت را اینجا بذار
 )
 
-marzban_panel = MarzbanAPI()
 xui_panel = XuiAPI()
+marzban_panel = MarzbanAPI()
 
-async def init_async_db():
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute('''CREATE TABLE IF NOT EXISTS users 
-                            (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, username TEXT)''')
-        await db.execute('''CREATE TABLE IF NOT EXISTS plans 
-                            (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, size INTEGER, days INTEGER, price INTEGER, panel_type TEXT)''')
-        
-        async with db.execute("SELECT COUNT(*) FROM plans") as cursor:
-            if (await cursor.fetchone())[0] == 0:
-                await db.execute("INSERT INTO plans (name, size, days, price, panel_type) VALUES (?, ?, ?, ?, ?)", 
-                                 ("🚀 پلن سنایی اقتصادی (۱۰ گیگ)", 10, 30, 40000, "xui"))
-                await db.execute("INSERT INTO plans (name, size, days, price, panel_type) VALUES (?, ?, ?, ?, ?)", 
-                                 ("🔥 پلن سنایی حرفه‌ای (۳۰ گیگ)", 30, 30, 90000, "xui"))
-                await db.commit()
-
-def main_menu(user_id):
+# منوی اصلی کاربر
+def user_menu(user_id):
     buttons = [
-        [InlineKeyboardButton("🛍️ خرید اشتراک VPN", callback_data="buy_menu"),
-         InlineKeyboardButton("👤 حساب و کیف پول", callback_data="profile_menu")],
-        [InlineKeyboardButton("💳 شارژ کیف پول", callback_data="charge_wallet"),
-         InlineKeyboardButton("📞 پشتیبانی آنلاین", callback_data="support_info")]
+        [InlineKeyboardButton("🛍️ خرید اشتراک V2Ray", callback_data="buy_menu"),
+         InlineKeyboardButton("👤 حساب و کانکشن‌های من", callback_data="my_account")],
+        [InlineKeyboardButton("💳 شارژ کیف پول (کارت به کارت)", callback_data="charge_wallet"),
+         InlineKeyboardButton("📞 پشتیبانی ۲۴ ساعته", callback_data="support_info")]
     ]
     if user_id == config.ADMIN_ID:
-        buttons.append([InlineKeyboardButton("⚙️ پنل مدیریت تحت وب ادمین", callback_data="admin_main")])
+        buttons.append([InlineKeyboardButton("⚙️ پنل مدیریت هوشمند ربات", callback_data="admin_panel_main")])
     return InlineKeyboardMarkup(buttons)
 
 @app.on_message(filters.command("start"))
-async def start_command(client: Client, message: Message):
-    user_id = message.from_user.id
-    username = message.from_user.username or "Unknown"
+async def start_cmd(client: Client, message: Message):
+    uid = message.from_user.id
+    uname = message.from_user.username or "کاربر بدون آیدی"
+    
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+        await db.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (uid, uname))
         await db.commit()
+        
     await message.reply_text(
-        "🤖 به ابر سیستم هوشمند و خودکار فروش کانکشن ZarVpn خوش آمدید.\n\nلطفاً از دکمه‌های زیر اقدام کنید:",
-        reply_markup=main_menu(user_id)
+        f" سلام {message.from_user.first_name} عزیز\nبه ابر سیستم هوشمند فروش کانکشن خودکار **ZarVpn** خوش آمدید.\n\nلطفاً جهت خرید یا مدیریت کانکشن‌ها از دکمه‌های زیر استفاده کنید:",
+        reply_markup=user_menu(uid)
     )
 
 @app.on_callback_query()
-async def handle_callbacks(client: Client, call: CallbackQuery):
-    user_id = call.from_user.id
-    chat_id = call.message.chat.id
-    msg_id = call.message.id
+async def handle_commercial_callbacks(client: Client, call: CallbackQuery):
+    uid = call.from_user.id
     
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        if call.data == "back_to_user":
+        if call.data == "back_to_main":
             await call.answer()
-            await call.edit_message_text("🤖 به منوی اصلی ZarVpn برگشتید:", reply_markup=main_menu(user_id))
+            await call.edit_message_text("🤖 منوی اصلی سیستم ZarVpn:", reply_markup=user_menu(uid))
             
-        elif call.data == "profile_menu":
+        elif call.data == "my_account":
             await call.answer()
-            async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
-                balance = (await cursor.fetchone())[0]
-            text = f"👤 **حساب کاربری شما:**\n\n🆔 آیدی عددی: `{user_id}`\n💳 موجودی کیف پول: {balance:,} تومان"
-            await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_user")]]))
+            async with db.execute("SELECT balance FROM users WHERE user_id = ?", (uid,)) as c:
+                balance = (await c.fetchone())[0]
+            async with db.execute("SELECT COUNT(*) FROM orders WHERE user_id = ?", (uid,)) as c:
+                orders_count = (await c.fetchone())[0]
+                
+            text = f"👤 **مشخصات حساب شما:**\n\n🆔 آیدی عددی: `{uid}`\n💳 موجودی کیف پول: {balance:,} تومان\n📦 تعداد کانکشن‌های فعال: {orders_count} عدد"
+            buttons = []
+            if orders_count > 0:
+                buttons.append([InlineKeyboardButton("📥 دریافت مجدد لینک‌های کانکشن", callback_data="my_connections")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")])
+            await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
         elif call.data == "buy_menu":
             await call.answer()
-            async with db.execute("SELECT * FROM plans") as cursor:
-                plans = await cursor.fetchall()
+            async with db.execute("SELECT * FROM plans") as c:
+                plans = await c.fetchall()
             buttons = []
-            for plan in plans:
-                buttons.append([InlineKeyboardButton(f"{plan[1]} - {plan[4]:,} تومان", callback_data=f"buy_plan_{plan[0]}")])
-            buttons.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_user")])
-            await call.edit_message_text("🛍️ پلن مورد نظر خود را برای خرید انتخاب کنید:", reply_markup=InlineKeyboardMarkup(buttons))
+            for p in plans:
+                buttons.append([InlineKeyboardButton(f"{p[1]} ➖ {p[4]:,} تومان", callback_data=f"order_p_{p[0]}")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")])
+            await call.edit_message_text("🛍️ لیست پلن‌های فعال سرورها:\n\nپلن مورد نظر خود را انتخاب کنید تا به صورت خودکار روی پنل سنایی یا مرزبان ساخته شود:", reply_markup=InlineKeyboardMarkup(buttons))
 
-        elif call.data.startswith("buy_plan_"):
-            await call.answer("در حال پردازش درخواست خرید...", show_alert=False)
-            plan_id = int(call.data.split("_")[2])
-            async with db.execute("SELECT * FROM plans WHERE id = ?", (plan_id,)) as cursor:
-                plan = await cursor.fetchone()
-            async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as cursor:
-                balance = (await cursor.fetchone())[0]
+        elif call.data.startswith("order_p_"):
+            pid = int(call.data.split("_")[2])
+            async with db.execute("SELECT * FROM plans WHERE id = ?", (pid,)) as c:
+                plan = await c.fetchone()
+            async with db.execute("SELECT balance FROM users WHERE user_id = ?", (uid,)) as c:
+                balance = (await c.fetchone())[0]
                 
-            if balance >= plan[4]:
-                new_balance = balance - plan[4]
-                await db.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
-                await db.commit()
-                await call.edit_message_text("🔄 موجودی تایید شد. در حال ساخت کانکشن واقعی در پنل سنایی شما...")
+            if balance < plan[4]:
+                await call.answer("❌ موجودی کیف پول شما کافی نیست!", show_alert=True)
+                return
                 
-                if plan[5] == "xui":
-                    result = await xui_panel.create_user(f"zar_{user_id}", plan[3], plan[2])
-                else:
-                    result = await marzban_panel.create_user(f"zar_{user_id}", plan[3], plan[2])
-                
-                if result["status"] == "success":
-                    text = f"✅ **خرید با موفقیت انجام شد!**\n\n🚀 **لینک اختصاصی شما:**\n`{result['link']}`"
-                else:
-                    await db.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance, user_id))
-                    await db.commit()
-                    text = f"❌ **خطای پنل:**\n{result['message']}\n\n💰 مبلغ عودت داده شد."
+            await call.edit_message_text("🔄 موجودی تایید شد. در حال برقراری ارتباط ایمن با پنل V2Ray و ساخت کانکشن اختصاصی شما...")
+            
+            v2_username = f"zar_{uid}_{pid}"
+            if plan[5] == "xui":
+                res = await xui_panel.create_user(v2_username, plan[3], plan[2])
             else:
-                text = f"❌ **موجودی کافی نیست!**\n\n💵 قیمت: {plan[4]:,} تومان\n💳 موجودی: {balance:,} تومان"
-            await call.message.reply_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 منوی خرید", callback_data="buy_menu")]]))
+                res = await marzban_panel.create_user(v2_username, plan[3], plan[2])
+                
+            if res["status"] == "success":
+                new_bal = balance - plan[4]
+                await db.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_bal, uid))
+                await db.execute("INSERT INTO orders (user_id, plan_name, sub_link, v2ray_username, panel_type) VALUES (?, ?, ?, ?, ?)",
+                                 (uid, plan[1], res["link"], v2_username, plan[5]))
+                await db.commit()
+                
+                text = f"✅ **خرید با موفقیت انجام شد!**\n\n📌 **مشخصات سرویس:**\n📦 پلن: {plan[1]}\n⏱️ مدت زمان: {plan[3]} روز\n\n🚀 **لینک ساب‌اسکریپشن اختصاصی شما (مخصوص ثبت در برنامه):**\n`{res['link']}`"
+                await call.message.reply_text(text)
+            else:
+                text = f"❌ **خطا در اتصال به پنل سرور:**\n{res['message']}\n\n💰 وجهی از حساب شما کسر نشد."
+                await call.message.reply_text(text)
 
-        elif call.data == "admin_main" and user_id == config.ADMIN_ID:
+        # ⚙️ بخش پنل مدیریت حرفه‌ای داخل ربات برای ادمین
+        elif call.data == "admin_panel_main" and uid == config.ADMIN_ID:
             await call.answer()
-            buttons = [[InlineKeyboardButton("🎁 شارژ تست حساب ادمین", callback_data="admin_gift_test")], [InlineKeyboardButton("🔙 خروج", callback_data="back_to_user")]]
-            await call.edit_message_text("⚙️ به مدیریت ربات خوش آمدید. آمار کامل در پنل وب (پورت 8080) قرار دارد:", reply_markup=InlineKeyboardMarkup(buttons))
+            async with db.execute("SELECT COUNT(*) FROM users") as c:
+                total_users = (await c.fetchone())[0]
+            async with db.execute("SELECT COUNT(*) FROM orders") as c:
+                total_orders = (await c.fetchone())[0]
+                
+            text = f"⚙️ **پنل مدیریت پیشرفته ادمین ZarVpn**\n\n👥 کل کاربران ربات: {total_users} نفر\n🛒 کل کانکشن‌های فروخته شده: {total_orders} عدد\n🌐 وضعیت پنل تحت وب: فعال (پورت 8080)"
+            buttons = [
+                [InlineKeyboardButton("🎁 شارژ هدیه ۱۰۰ تومانی حساب خودم", callback_data="gif_adm")],
+                [InlineKeyboardButton("🔙 منوی اصلی", callback_data="back_to_main")]
+            ]
+            await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
-        elif call.data == "admin_gift_test" and user_id == config.ADMIN_ID:
+        elif call.data == "gif_adm" and uid == config.ADMIN_ID:
             await db.execute("UPDATE users SET balance = balance + 100000 WHERE user_id = ?", (config.ADMIN_ID,))
             await db.commit()
-            await call.answer("✅ ۱۰۰ هزار تومان شارژ تست اضافه شد.", show_alert=True)
-
-# استارت بهینه در پایتون 3.10
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(init_async_db())
-    print("🚀 ابر ربات فروش ZarVpn با پایتون 3.10 روشن شد...")
-    app.run()
+            await call.answer("✅ حساب شما ۱۰۰ هزار تومان شارژ تست شد!", show_alert=True)
