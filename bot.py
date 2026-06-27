@@ -9,8 +9,8 @@ from panels.xui import XuiAPI
 app = Client(
     "zarvpn_bot",
     bot_token=config.TELEGRAM_TOKEN,
-    api_id=123456,
-    api_hash="abcdef"
+    api_id=29302323,
+    api_hash="247e5f3f98d9fb20aab59a3a9472bcc4"
 )
 
 marzban_panel = MarzbanAPI()
