@@ -1,4 +1,40 @@
-# 🌐 تابع دریافت توکن ادمین از پنل مرزبان
+import telebot
+from telebot import types
+import sqlite3
+import requests
+import time
+import config
+
+bot = telebot.TeleBot(config.TELEGRAM_TOKEN)
+
+# ==========================================
+# 💾 بخش اول: ساخت و مدیریت دیتابیس (کیف پول)
+# ==========================================
+def init_db():
+    conn = sqlite3.connect("zarvpn.db")
+    cursor = conn.cursor()
+    # جدول کاربران و موجودی کیف پول
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
+                      (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, username TEXT)''')
+    # جدول پلن‌های فروش
+    cursor.execute('''CREATE TABLE IF NOT EXISTS plans 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, size INTEGER, days INTEGER, price INTEGER)''')
+    conn.commit()
+    
+    # افزودن چند پلن پیش‌فرض در صورت خالی بودن دیتابیس
+    cursor.execute("SELECT COUNT(*) FROM plans")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO plans (name, size, days, price) VALUES (?, ?, ?, ?)", ("👑 پلن برنزی (یک‌ماهه ۱۰ گیگ)", 10, 30, 50000))
+        cursor.execute("INSERT INTO plans (name, size, days, price) VALUES (?, ?, ?, ?)", ("💎 پلن نقره‌ای (یک‌ماهه ۳۰ گیگ)", 30, 30, 100000))
+        cursor.execute("INSERT INTO plans (name, size, days, price) VALUES (?, ?, ?, ?)", ("🔥 پلن طلایی (سه‌ماهه ۱۰۰ گیگ)", 100, 90, 250000))
+        conn.commit()
+    conn.close()
+
+init_db()
+
+# ==========================================
+# 🌐 بخش دوم: اتصال واقعی به API پنل مرزبان
+# ==========================================
 def get_marzban_token():
     try:
         login_url = f"{config.PANEL_URL}/api/admin/token"
@@ -14,7 +50,6 @@ def get_marzban_token():
         print(f"Error getting token: {e}")
         return None
 
-# 🌐 تابع واقعی ساخت اکانت در مرزبان و تحویل لینک VLESS/VMess
 def create_vpn_account(username, days, size_gb):
     token = get_marzban_token()
     if not token:
@@ -25,31 +60,5 @@ def create_vpn_account(username, days, size_gb):
         "Content-Type": "application/json"
     }
     
-    # محاسبه زمان انقضا به فرمت Epoch/Timestamp
-    import time
+    # محاسبه زمان انقضا به فرمت Epoch
     expire_time = int(time.time()) + (days * 86400)
-    
-    # محاسبه حجم به بایت
-    data_limit = size_gb * 1024 * 1024 * 1024
-    
-    user_url = f"{config.PANEL_URL}/api/user"
-    payload = {
-        "username": username,
-        "proxies": {"vless": {}, "vmess": {}}, # فعال‌سازی پروتکل‌ها
-        "expire": expire_time,
-        "data_limit": data_limit
-    }
-    
-    try:
-        response = requests.post(user_url, json=payload, headers=headers, timeout=10)
-        if response.status_code == 200:
-            # دریافت لینک‌های اتصال (subscription url) از خروجی پنل مرزبان
-            sub_url = response.json().get("subscription_url")
-            # اگر ساب‌لینک مستقیم نبود، آدرس پنل را به ابتدای آن می‌چسبانیم
-            if sub_url and not sub_url.startswith("http"):
-                sub_url = f"{config.PANEL_URL}{sub_url}"
-            return sub_url
-        else:
-            return f"❌ پنل خطا داد: {response.text}"
-    except Exception as e:
-        return f"❌ خطای شبکه: {e}"
