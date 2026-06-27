@@ -24,11 +24,19 @@ async def admin_dashboard():
             plans = await c.fetchall()
         async with db.execute("SELECT user_id, username, balance FROM users ORDER BY created_at DESC") as c:
             users_list = await c.fetchall()
-        async with db.execute("SELECT value FROM settings WHERE key='nowpayments_api'") as c:
-            row = await c.fetchone()
-            api_key = row[0] if row else "تنظیم نشده"
+            
+        async with db.execute("SELECT * FROM server_settings WHERE panel_type='xui'") as c:
+            xui_server = await c.fetchone() or ("xui", "", "", "")
+        async with db.execute("SELECT * FROM server_settings WHERE panel_type='marzban'") as c:
+            marzban_server = await c.fetchone() or ("marzban", "", "", "")
 
-    # قالب فوق پیشرفته HTML برای ادمین
+        async with db.execute("SELECT value FROM settings WHERE key='swapwallet_api'") as c:
+            row = await c.fetchone()
+            swap_api = row[0] if row else ""
+        async with db.execute("SELECT value FROM settings WHERE key='swapwallet_merchant'") as c:
+            row = await c.fetchone()
+            swap_merchant = row[0] if row else ""
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="fa" dir="rtl">
@@ -36,12 +44,11 @@ async def admin_dashboard():
         <meta charset="UTF-8">
         <title>ابر پنل تجاری ZarVpn</title>
         <style>
-            body {{ font-family: Tahoma; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }}
+            body {{ font-family: Tahoma, Arial; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }}
             .container {{ max-width: 1200px; margin: 0 auto; }}
             .header {{ background: linear-gradient(135deg, #1e3a8a, #3b82f6); padding: 25px; border-radius: 15px; text-align: center; margin-bottom: 25px; }}
             .stats {{ display: flex; gap: 20px; margin-bottom: 25px; }}
             .card {{ background: #1e293b; padding: 20px; border-radius: 12px; width: 33%; text-align: center; border: 1px solid #334155; }}
-            .card h3 {{ margin: 0; color: #94a3b8; }}
             .card p {{ font-size: 26px; font-weight: bold; margin: 10px 0 0 0; color: #3b82f6; }}
             .section {{ background: #1e293b; padding: 25px; border-radius: 15px; margin-bottom: 25px; border: 1px solid #334155; }}
             input, select, button {{ padding: 10px; margin: 5px; border-radius: 8px; border: 1px solid #475569; background: #334155; color: white; }}
@@ -58,8 +65,38 @@ async def admin_dashboard():
         <div class="container">
             <div class="header">
                 <h2>⚡ ابر پنل مدیریت تحت وب تجاری سیستم ZarVpn</h2>
-                <p>مدیریت مولتی پنل (XUI / Marzban)، صرافی کریپتو و دیتابیس کاربری</p>
-                <a href="/backup/download"><button class="btn-success">📥 دانلود و پشتیبان‌گیری فوری از دیتابیس</button></a>
+                <p>متصل به صرافی ایرانی هوشمند Swap Wallet و مدیریت مگا پنل</p>
+                <a href="/backup/download"><button class="btn-success">📥 پشتیبان‌گیری و دانلود فوری دیتابیس</button></a>
+            </div>
+
+            <div class="section">
+                <h3 style="color: #f59e0b;">🪙 تنظیمات اتصال به درگاه صرافی ایرانی Swap Wallet</h3>
+                <form action="/settings/update-swapwallet" method="post">
+                    <input type="text" name="api_key" placeholder="کلید API صرافی (Token)" value="{swap_api}" style="width: 40%;" required>
+                    <input type="text" name="merchant_id" placeholder="مرچنت آیدی (Merchant ID)" value="{swap_merchant}" style="width: 30%;" required>
+                    <button type="submit" class="btn-success">🔄 ذخیره درگاه Swap Wallet</button>
+                </form>
+            </div>
+
+            <div class="section">
+                <h3>🌐 تنظیمات و اتصال به پنل‌های V2Ray سرورها</h3>
+                <h4 style="color: #3b82f6; margin-bottom: 5px;">🔧 اتصال به پنل X-UI (سنایی):</h4>
+                <form action="/server-settings/update" method="post">
+                    <input type="hidden" name="panel_type" value="xui">
+                    <input type="text" name="url" placeholder="آدرس پنل (http://IP:PORT)" value="{xui_server[1]}" style="width: 35%;" required>
+                    <input type="text" name="username" placeholder="نام کاربری پنل" value="{xui_server[2]}" required>
+                    <input type="password" name="password" placeholder="رمز عبور پنل" value="{xui_server[3]}" required>
+                    <button type="submit">🔗 ذخیره اتصال سنایی</button>
+                </form>
+
+                <h4 style="color: #16a34a; margin-top: 20px; margin-bottom: 5px;">🔧 اتصال به پنل مرزبان (Marzban):</h4>
+                <form action="/server-settings/update" method="post">
+                    <input type="hidden" name="panel_type" value="marzban">
+                    <input type="text" name="url" placeholder="آدرس پنل (http://IP:PORT)" value="{marzban_server[1]}" style="width: 35%;" required>
+                    <input type="text" name="username" placeholder="نام کاربری پنل" value="{marzban_server[2]}" required>
+                    <input type="password" name="password" placeholder="رمز عبور پنل" value="{marzban_server[3]}" required>
+                    <button type="submit" class="btn-success">🔗 ذخیره اتصال مرزبان</button>
+                </form>
             </div>
 
             <div class="stats">
@@ -69,17 +106,9 @@ async def admin_dashboard():
             </div>
 
             <div class="section">
-                <h3>🪙 تنظیمات اتصال به درگاه صرافی کریپتو (NowPayments)</h3>
-                <form action="/settings/update-api" method="post">
-                    <input type="text" name="api_key" placeholder="API Key صرافی را وارد کنید" value="{api_key}" style="width: 60%;">
-                    <button type="submit">🔄 بروزرسانی API صرافی</button>
-                </form>
-            </div>
-
-            <div class="section">
                 <h3>🚀 ایجاد پلن فروش جدید برای ربات</h3>
                 <form action="/plans/add" method="post">
-                    <input type="text" name="name" placeholder="نام پلن (مثلا: پلن اقتصادی سنایی)" required>
+                    <input type="text" name="name" placeholder="نام پلن" required>
                     <input type="number" name="size" placeholder="حجم به گیگابایت" required>
                     <input type="number" name="days" placeholder="تعداد روز" required>
                     <input type="number" name="price" placeholder="قیمت به تومان" required>
@@ -112,7 +141,7 @@ async def admin_dashboard():
                 <h3>👥 مدیریت و شارژ کیف پول کاربران ربات</h3>
                 <form action="/users/charge" method="post">
                     <input type="number" name="user_id" placeholder="آیدی عددی تلگرام کاربر" required>
-                    <input type="number" name="amount" placeholder="مبلغ شارژ (تومان) - برای کسر منفی بزنید" required>
+                    <input type="number" name="amount" placeholder="مبلغ شارژ (تومان)" required>
                     <button type="submit">💳 اعمال شارژ</button>
                 </form>
 
@@ -136,7 +165,20 @@ async def admin_dashboard():
     """
     return html_content
 
-# --- دایرکتوری توابع اکشن پنل وب ---
+@app.post("/settings/update-swapwallet")
+async def update_swapwallet(api_key: str = Form(...), merchant_id: str = Form(...)):
+    async with aiosqlite.connect("zarvpn_web.db") as db:
+        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('swapwallet_api', ?)", (api_key,))
+        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('swapwallet_merchant', ?)", (merchant_id,))
+        await db.commit()
+    return HTMLResponse("<script>alert('تنظیمات صرافی Swap Wallet ذخیره شد!'); window.location.href='/';</script>")
+
+@app.post("/server-settings/update")
+async def update_server_settings(panel_type: str = Form(...), url: str = Form(...), username: str = Form(...), password: str = Form(...)):
+    async with aiosqlite.connect("zarvpn_web.db") as db:
+        await db.execute("INSERT OR REPLACE INTO server_settings (panel_type, url, username, password) VALUES (?, ?, ?, ?)", (panel_type, url, username, password))
+        await db.commit()
+    return HTMLResponse("<script>alert('اتصال پنل با موفقیت ذخیره شد!'); window.location.href='/';</script>")
 
 @app.post("/plans/add")
 async def add_plan(name: str = Form(...), size: int = Form(...), days: int = Form(...), price: int = Form(...), panel_type: str = Form(...)):
@@ -159,13 +201,6 @@ async def charge_user(user_id: int = Form(...), amount: int = Form(...)):
         await db.commit()
     return HTMLResponse("<script>alert('کیف پول کاربر بروزرسانی شد!'); window.location.href='/';</script>")
 
-@app.post("/settings/update-api")
-async def update_api(api_key: str = Form(...)):
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('nowpayments_api', ?)", (api_key,))
-        await db.commit()
-    return HTMLResponse("<script>alert('تنظیمات صرافی ثبت شد!'); window.location.href='/';</script>")
-
 @app.get("/backup/download")
 async def download_backup():
     db_path = "zarvpn_web.db"
@@ -173,3 +208,4 @@ async def download_backup():
     if not os.path.exists("backups"): os.makedirs("backups")
     shutil.copyfile(db_path, backup_path)
     return FileResponse(path=backup_path, filename=f"zarvpn_backup_{datetime.now().strftime('%Y%m%d')}.db", media_type='application/octet-stream')
+
