@@ -1,10 +1,16 @@
 #!/bin/bash
 
+# پاک کردن صفحه برای زیبایی کار
 clear
+
 echo "=================================================="
 echo "   به اسکریپت نصب خودکار ربات ZarVpn خوش آمدید   "
 echo "=================================================="
 echo ""
+
+# پیدا کردن مسیر دقیق پوشه‌ای که پروژه در آن دانلود شده
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 # دریافت اطلاعات از کاربر
 read -p "🔹 لطفاً توکن ربات تلگرام خود را وارد کنید: " user_token
@@ -45,8 +51,8 @@ After=network.target
 
 [Service]
 User=root
-WorkingDirectory=$(pwd)
-ExecStart=$(pwd)/venv/bin/python3 bot.py
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$SCRIPT_DIR/venv/bin/python3 bot.py
 Restart=always
 
 [Install]
