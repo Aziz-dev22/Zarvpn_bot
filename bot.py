@@ -1,14 +1,4 @@
 import asyncio
-import nest_asyncio
-
-# اعمال پچ لوپ پایتون 3.14
-try:
-    loop = asyncio.get_event_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-nest_asyncio.apply(loop)
-
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message
 import aiosqlite
@@ -131,18 +121,13 @@ async def handle_callbacks(client: Client, call: CallbackQuery):
             await db.commit()
             await call.answer("✅ ۱۰۰ هزار تومان شارژ تست اضافه شد.", show_alert=True)
 
-# 🛠️ بازنویسی بخش استارت برای کپسوله‌سازی اجرا در پایتون 3.14
-async def main_runner():
+# 🛠️ ساختار استارت کاملاً بومی و منطبق بر پایتون 3.14
+async def main():
     await init_async_db()
-    print("🚀 ابر ربات فروش ZarVpn (نسخه ۲) با موفقیت روی لوپ پایتون 3.14 جفت شد...")
+    print("🚀 ابر ربات فروش ZarVpn (نسخه ۲) با موفقیت روی لایه اختصاصی پایتون 3.14 روشن شد...")
     await app.start()
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    # ایجاد فرآیند به عنوان یک تسکِ استاندارد برای فرار از ارور تاین‌اوت پایتون 3.14
-    loop.create_task(main_runner())
-    try:
-        loop.run_forever()
-    except (KeyboardInterrupt, SystemExit):
-        pass
-
+    # استفاده از متد مستقیم به جای مدیریت دستی لوپ
+    asyncio.run(main())
