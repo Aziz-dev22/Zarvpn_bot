@@ -1,49 +1,35 @@
 #!/bin/bash
 
-# پاک کردن صفحه برای زیبایی کار
 clear
-
-echo "=================================================="
-echo "   به اسکریپت نصب خودکار ربات ZarVpn خوش آمدید   "
-echo "=================================================="
+echo "========================================================"
+echo "      اسکریپت نصب ابر سیستم فروش ZarVpn (نسخه ۲.۰)"
+echo "========================================================"
 echo ""
 
-# پیدا کردن مسیر دقیق پوشه‌ای که پروژه در آن دانلود شده
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-# دریافت اطلاعات از کاربر
-read -p "🔹 لطفاً توکن ربات تلگرام خود را وارد کنید: " user_token
-read -p "🔹 لطفاً آیدی عددی ادمین را وارد کنید: " user_admin_id
+read -p "🔹 توکن ربات تلگرام: " user_token
+read -p "🔹 آیدی عددی ادمین: " user_admin_id
 
-# بررسی خالی نبودن ورودی‌ها
-if [ -z "$user_token" ] || [ -z "$user_admin_id" ]; then
-    echo "❌ خطا: توکن یا آیدی عددی نمی‌تواند خالی باشد!"
-    exit 1
-fi
-
-# بروزرسانی و نصب پیش‌نیازها
-echo "🔄 در حال نصب پیش‌نیازهای سرور ابونتو..."
-sudo apt update && sudo apt install python3 python3-pip python3-venv git -y
-
-# ساخت محیط مجازی پایتون
-echo "🌐 ساخت محیط مجازی پایتون (Venv)..."
-python3 -m venv venv
-source venv/bin/activate
-
-# نصب کتابخانه‌ها
-echo "📚 در حال نصب کتابخانه‌های پایتون..."
-pip install -r requirements.txt
-
-# ذخیره اطلاعات کاربر در فایل امن .env
-echo "💾 در حال ذخیره تنظیمات شما..."
+# ذخیره در فایل .env
 cat > .env <<EOF
 TELEGRAM_TOKEN=$user_token
 ADMIN_ID=$user_admin_id
+DATABASE_URL=sqlite+aiosqlite:///./zarvpn_web.db
+WEB_PORT=8080
+WEB_USERNAME=admin
+WEB_PASSWORD=zarvpn_admin
 EOF
 
-# ساخت سرویس سیستمی برای روشن ماندن همیشگی ربات
-echo "⚙️ در حال ساخت سرویس برای ماندگاری ربات..."
+echo "🔄 در حال نصب سرور پیشرفته، پایتون ۳ و نیازمندی‌ها..."
+sudo apt update && sudo apt install python3 python3-pip python3-venv git -y
+
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# ۱. ساخت سرویس ربات تلگرام
 sudo bash -c "cat > /etc/systemd/system/zarvpn-bot.service <<EOF
 [Unit]
 Description=ZarVpn Telegram Bot
@@ -59,11 +45,28 @@ Restart=always
 WantedBy=multi-user.target
 EOF"
 
-# فعال‌سازی و استارت سرویس
+# ۲. ساخت سرویس پنل مدیریت تحت وب (FastAPI)
+sudo bash -c "cat > /etc/systemd/system/zarvpn-web.service <<EOF
+[Unit]
+Description=ZarVpn Web Panel
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$SCRIPT_DIR/venv/bin/uvicorn web.app:app --host 0.0.0.0 --port 8080
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+# فعال‌سازی همزمان هر دو سیستم
 sudo systemctl daemon-reload
-sudo systemctl enable zarvpn-bot.service
-sudo systemctl start zarvpn-bot.service
+sudo systemctl enable zarvpn-bot.service zarvpn-web.service
+sudo systemctl start zarvpn-bot.service zarvpn-web.service
 
 echo ""
-echo "✅ تبریک! ربات ZarVpn با موفقیت نصب و در پس‌زمینه سرور روشن شد."
-echo "📊 برای بررسی وضعیت ربات دستور مقابل را بزنید: systemctl status zarvpn-bot"
+echo "🔥 سیستم با موفقیت نصب شد!"
+echo "🤖 ربات تلگرام فعال شد."
+echo "🌐 پنل تحت وب روی پورت 8080 سرور شما بالا آمد: http://YOUR_SERVER_IP:8080"
