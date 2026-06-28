@@ -33,7 +33,7 @@ async def is_subscribed(client, user_id):
         return True
 
 async def get_user_menu(user_id):
-    """تولید داینامیک و بدون نقص دکمه‌های منوی اصلی"""
+    """تولید داینامیک دکمه‌های منوی اصلی"""
     async with aiosqlite.connect("zarvpn_web.db") as db:
         try:
             async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: 
@@ -67,7 +67,6 @@ async def start(c, m):
     uid = m.from_user.id
     uname = m.from_user.username or "User"
     
-    # ثبت کاربر در دیتابیس با مدیریت ارور ستون‌ها
     try:
         async with aiosqlite.connect("zarvpn_web.db") as db:
             await db.execute(
@@ -87,13 +86,12 @@ async def start(c, m):
                 channel = "@your_channel"
         clean_ch = channel.replace('@', '').strip()
         
-        # دکمه شیشه‌ای تایید عضویت (پس از جوین شدن کاربر دوباره چک می‌کند)
         markup = InlineKeyboardMarkup([
             [InlineKeyboardButton("📢 ورود به کانال", url=f"https://t.me/{clean_ch}")],
             [InlineKeyboardButton("✅ عضو شدم (بررسی مجدد)", callback_data="check_sub_again")]
         ]) if clean_ch else None
         
-        await m.reply_text(f"❌ برای استفاده از خدمات ربات، ابتدا باید در کانال ما عضو شوید:\n\n📣 {channel}\n\nپس از عضویت، دکمه بررسی مجدد را بزنید یا دستور /start را بفرستید.", reply_markup=markup)
+        await m.reply_text(f"❌ برای استفاده از خدمات ربات، ابتدا باید در کانال ما عضو شوید:\n\n📣 {channel}\n\nپس از عضویت، دکمه بررسی مجدد را بزنید یا دستور /start را ارسال کنید.", reply_markup=markup)
         return
 
     await m.reply_text("🤖 به مگا سیستم فروش کانکشن خوش آمدید:\n📌 منوی زیر را جهت مدیریت حساب خود انتخاب کنید:", reply_markup=await get_user_menu(uid))
@@ -102,7 +100,6 @@ async def start(c, m):
 async def callbacks(client: Client, call: CallbackQuery):
     uid = call.from_user.id
     
-    # بررسی عضویت دوباره در کال‌بک تایید جوین
     if call.data == "check_sub_again":
         if await is_subscribed(client, uid):
             await call.message.delete()
@@ -145,7 +142,7 @@ async def callbacks(client: Client, call: CallbackQuery):
                     card = (await c.fetchone())[0]
             except Exception: 
                 card = "ثبت نشده"
-            await call.edit_message_text(f"💳 **واریز مستقیم کارت به کارت:**\n\nلطفاً مبلغ مورد نظر را به شماره کارت زیر واریز نمایید:\n\n`{card}`\n\n📌 پس از پرداخت، رسید واریزی را برای پشتیبانی ارسال فرمایید تا حساب شما شارژ شود.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="charge_menu")]]))
+            await call.edit_message_text(f"💳 **واریز مستقیم کارت به کارت:**\n\nلطفاً مبلغ مورد نظر را به شماره کارت زیر واریز نمایید:\n\n`{card}`\n\n📌 پس از پرداخت، رسید واریزی را برای پشتیبانی ارسال فرمایید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="charge_menu")]]))
 
         elif call.data == "pay_crypto":
             try:
@@ -171,7 +168,6 @@ async def callbacks(client: Client, call: CallbackQuery):
             btns.append([InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_to_main")])
             await call.edit_message_text("🛍️ محصولات و پلن‌های سرعت بالای مگا سیستم:\n📌 پلن مورد نظر خود را جهت خرید انتخاب کنید:", reply_markup=InlineKeyboardMarkup(btns))
 
-        # هندلر خرید یک پلن خاص و کسر از موجودی کیف پول کاربران
         elif call.data.startswith("buy_id_"):
             pid = int(call.data.split("_")[2])
             async with db.execute("SELECT name, size_gb, days, price, panel_type FROM plans WHERE id=?", (pid,)) as c:
@@ -183,24 +179,30 @@ async def callbacks(client: Client, call: CallbackQuery):
                 await call.answer("❌ پلن یافت نشد!", show_alert=True)
                 return
             if balance < plan[3]:
-                await call.answer("❌ موجودی کیف پول شما کافی نیست! ابتدا حساب خود را شارژ کنید.", show_alert=True)
+                await call.answer("❌ موجودی کیف پول شما کافی نیست!", show_alert=True)
                 return
                 
             await call.answer("⚙️ در حال برقراری ارتباط با سرور و صدور کانکشن...", show_alert=True)
             v2_user = f"zar_{uid}_{pid}"
-            # ساخت اکانت روی سرورها از طریق ماژول پنل منیجر
-            res = await panel_manager.create_account(plan[4], v2_user, plan[1], plan[2])
             
-            if res.get("status") == "success":
-                # کسر موجودی و ثبت سفارش در دیتابیس
-                await db.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (plan[3], uid))
-                await db.execute("INSERT INTO orders (user_id, plan_name, sub_link, v2ray_username, panel_type) VALUES (?, ?, ?, ?, ?)", (uid, plan[0], res["link"], v2_user, plan[4]))
-                await db.commit()
+            try:
+                # فراخوانی متد جدید برای ثبت روی تمامی اینباندها
+                res = await panel_manager.create_account(plan[4], v2_user, plan[1], plan[2])
                 
-                success_text = f"✅ **خرید با موفقیت انجام شد!**\n\n📦 پلن: {plan[0]}\n🔗 کانکشن اختصاصی شما:\n\n`{res['link']}`\n\n📌 جهت دانلود نرم‌افزارهای اتصال لینک را در کلایِنت خود کپی کنید."
-                await call.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_to_main")]]))
-            else:
-                await call.edit_message_text("❌ خطا در صدور کانکشن از سمت سرور! لطفا به پشتیبانی پیام دهید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="buy_menu")]]))
+                if res and res.get("status") == "success" and res.get("link"):
+                    sub_link = res["link"]
+                    
+                    await db.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (plan[3], uid))
+                    await db.execute("INSERT INTO orders (user_id, plan_name, sub_link, v2ray_username, panel_type) VALUES (?, ?, ?, ?, ?)", (uid, plan[0], sub_link, v2_user, plan[4]))
+                    await db.commit()
+                    
+                    success_text = f"✅ **خرید با موفقیت انجام شد!**\n\n📦 پلن: {plan[0]}\n\n🔗 **لینک ساب متصل به تمام پروتکل‌ها:**\n`{sub_link}`\n\n📌 لطفاً لینک بالا را کپی کرده و در نرم‌افزار خود وارد کنید."
+                    await call.edit_message_text(success_text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_to_main")]]))
+                else:
+                    raise Exception("Invalid panel response")
+            except Exception as e:
+                print(f"Error in creating account: {e}")
+                await call.edit_message_text("❌ خطا در صدور کانکشن از سمت سرور! به پشتیبانی پیام دهید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="buy_menu")]]))
 
         elif call.data == "manage_services":
             try:
@@ -209,13 +211,12 @@ async def callbacks(client: Client, call: CallbackQuery):
             except Exception: 
                 srvs = []
             if not srvs: 
-                await call.answer("❌ شما هیچ سرویس یا اشتراک فعالی در سیستم ندارید!", show_alert=True)
+                await call.answer("❌ شما هیچ سرویس فعالی در سیستم ندارید!", show_alert=True)
                 return
             btns = [[InlineKeyboardButton(f"📦 {s[1]} (کد اشتراک: {s[0]})", callback_data=f"view_srv_{s[0]}")] for s in srvs]
             btns.append([InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_to_main")])
             await call.edit_message_text("🛠️ سرویس‌ها و کانکشن‌های خریداری شده شما:", reply_markup=InlineKeyboardMarkup(btns))
 
-        # مشاهده جزئیات لینک یک کانکشن توسط کاربر عادی
         elif call.data.startswith("view_srv_"):
             oid = int(call.data.split("_")[2])
             async with db.execute("SELECT plan_name, sub_link FROM orders WHERE id=? AND user_id=?", (oid, uid)) as c:
@@ -223,7 +224,7 @@ async def callbacks(client: Client, call: CallbackQuery):
             if not srv_info:
                 await call.answer("سرویس یافت نشد", show_alert=True)
                 return
-            await call.edit_message_text(f"📦 **جزییات اشتراک شماره {oid}:**\n\nنام پلن: {srv_info[0]}\n\n🔗 لینک کانفیگ:\n`{srv_info[1]}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="manage_services")]]))
+            await call.edit_message_text(f"📦 **جزییات اشتراک شماره {oid}:**\n\nنام پلن: {srv_info[0]}\n\n🔗 لینک ساب سرور:\n`{srv_info[1]}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به لیست", callback_data="manage_services")]]))
 
         elif call.data == "get_free_test":
             async with db.execute("SELECT used_test FROM users WHERE user_id=?", (uid,)) as c:
@@ -233,14 +234,19 @@ async def callbacks(client: Client, call: CallbackQuery):
                 return
             await call.answer("🎁 در حال تولید کانکشن تست رایگان سرور...", show_alert=True)
             v2_user = f"test_{uid}"
-            res = await panel_manager.create_account("connectix", v2_user, 1, 1) # ۱ گیگ ۱ روزه تست
-            if res.get("status") == "success":
-                await db.execute("UPDATE users SET used_test=1 WHERE user_id=?", (uid,))
-                await db.execute("INSERT INTO orders (user_id, plan_name, sub_link, v2ray_username, panel_type) VALUES (?, 'تست رایگان ۱ گیگ', ?, ?, 'connectix')", (uid, res["link"], v2_user))
-                await db.commit()
-                await call.edit_message_text(f"🎁 **اکانت تست رایگان شما با موفقیت صادر شد:**\n\n`{res['link']}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]]))
-            else:
-                await call.answer("خطا در برقراری ارتباط با سرور تست", show_alert=True)
+            
+            try:
+                res = await panel_manager.create_account("connectix", v2_user, 1, 1)
+                if res and res.get("status") == "success" and res.get("link"):
+                    sub_link = res["link"]
+                    await db.execute("UPDATE users SET used_test=1 WHERE user_id=?", (uid,))
+                    await db.execute("INSERT INTO orders (user_id, plan_name, sub_link, v2ray_username, panel_type) VALUES (?, 'تست رایگان ۱ گیگ', ?, ?, 'connectix')", (uid, sub_link, v2_user))
+                    await db.commit()
+                    await call.edit_message_text(f"🎁 **اکانت تست رایگان شما با موفقیت صادر شد:**\n\n🔗 **لینک ساب:**\n`{sub_link}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]]))
+                else:
+                    raise Exception("Test config failed")
+            except Exception:
+                await call.answer("❌ در حال حاضر سرور تست پاسخگو نیست!", show_alert=True)
 
         elif call.data == "ref_menu":
             bot_username = (await client.get_me()).username
@@ -250,7 +256,7 @@ async def callbacks(client: Client, call: CallbackQuery):
                     count = (await c.fetchone())[0]
             except Exception: 
                 count = 0
-            text = f"👥 **سیستم هوشمند درآمدزایی و زیرمجموعه‌گیری:**\n\nبا دعوت از دوستانتان به ربات ما، درصد ثابت سود شارژ یا خرید از سیستم هدیه بگیرید!\n\n🔗 **لینک دعوت اختصاصی شما:**\n`{ref_link}`\n\n👥 تعداد کاربران دعوت شده توسط شما: **{count} نفر**"
+            text = f"👥 **سیستم زیرمجموعه‌گیری:**\n\n🔗 **لینک دعوت اختصاصی شما:**\n`{ref_link}`\n\n👥 تعداد کاربران دعوت شده: **{count} نفر**"
             await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به منو", callback_data="back_to_main")]]))
 
         elif call.data == "admin_bot_menu" and str(uid) == str(config.ADMIN_ID):
@@ -258,7 +264,7 @@ async def callbacks(client: Client, call: CallbackQuery):
                 [InlineKeyboardButton("👥 مدیریت لیست کاربران", callback_data="bot_manage_users")], 
                 [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]
             ]
-            await call.edit_message_text("⚙️ پنل مدیریت درون ربات ادمین کل سیستم:", reply_markup=InlineKeyboardMarkup(btns))
+            await call.edit_message_text("⚙️ پنل مدیریت درون ربات:", reply_markup=InlineKeyboardMarkup(btns))
 
         elif call.data == "bot_manage_users" and str(uid) == str(config.ADMIN_ID):
             try:
@@ -268,7 +274,7 @@ async def callbacks(client: Client, call: CallbackQuery):
                 users = []
             btns = [[InlineKeyboardButton(f"👤 {u[1]} ({u[0]})", callback_data=f"adm_usr_{u[0]}")] for u in users]
             btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="admin_bot_menu")])
-            await call.edit_message_text("👥 ۱۵ کاربر اخیر سیستم جهت مدیریت فوری سریع:", reply_markup=InlineKeyboardMarkup(btns))
+            await call.edit_message_text("👥 لیست کاربران سیستم:", reply_markup=InlineKeyboardMarkup(btns))
 
         elif call.data.startswith("adm_usr_") and str(uid) == str(config.ADMIN_ID):
             t_id = int(call.data.split("_")[2])
@@ -288,13 +294,14 @@ async def callbacks(client: Client, call: CallbackQuery):
             t_id = int(call.data.split("_")[2])
             await db.execute("UPDATE users SET balance = balance + 50000 WHERE user_id=?", (t_id,))
             await db.commit()
-            await call.answer("✅ مبلغ ۵۰ هزار تومان به موجودی کاربر افزوده شد.", show_alert=True)
+            await call.answer("✅ موجودی افزوده شد.", show_alert=True)
             
         elif call.data.startswith("b_dec_") and str(uid) == str(config.ADMIN_ID):
             t_id = int(call.data.split("_")[2])
             await db.execute("UPDATE users SET balance = max(0, balance - 50000) WHERE user_id=?", (t_id,))
             await db.commit()
-            await call.answer("❌ مبلغ ۵۰ هزار تومان از موجودی کاربر کسر شد.", show_alert=True)
+            await call.answer("❌ موجودی کسر شد.", show_alert=True)
 
 if __name__ == "__main__":
     app.run()
+
