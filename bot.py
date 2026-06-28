@@ -1,5 +1,4 @@
 import asyncio
-import os
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message, WebAppInfo
 from pyrogram.enums import ChatMemberStatus
@@ -11,7 +10,6 @@ app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=23749219, api
 panel_manager = MultiPanelManager()
 
 async def is_subscribed(client, user_id):
-    # ادمین به صورت کامل از قفل کانال عبور می‌کند
     if str(user_id) == str(config.ADMIN_ID): 
         return True 
         
@@ -41,6 +39,7 @@ async def get_user_menu(user_id):
             row = await c.fetchone()
             test_status = row[0] if row else "off"
         
+    # تضمین سلامت آدرس سرور برای دکمه‌های مینی‌آپ
     server_ip = "178.105.165.200" 
     m_url = f"http://{server_ip}:8080" 
 
@@ -58,10 +57,11 @@ async def get_user_menu(user_id):
         InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="ref_menu")
     ])
     
+    # مینی‌آپ کاربری و ادمین با متد کاملاً استاندارد WebAppInfo
     buttons.append([InlineKeyboardButton("📱 ورود به مینی‌اپ کاربری", web_app=WebAppInfo(url=f"{m_url}/miniapp?user_id={user_id}"))])
     
     if str(user_id) == str(config.ADMIN_ID):
-        buttons.append([InlineKeyboardButton("⚙️ پنل مینی‌اپ مدیریت کامل ادمین", web_app=WebAppInfo(url=f"{m_url}/?admin_auth_id={user_id}"))])
+        buttons.append([InlineKeyboardButton("⚙️ پنل مینی‌اپ مدیریت کامل ادمین", web_app=WebAppInfo(url=f"{m_url}/"))])
         buttons.append([InlineKeyboardButton("🛠️ پنل مدیریت (درون ربات)", callback_data="admin_bot_menu")])
     return InlineKeyboardMarkup(buttons)
 
@@ -70,7 +70,6 @@ async def start(c, m):
     uid = m.from_user.id
     uname = m.from_user.username or "User"
     
-    # 🔥 حل باگ کرش دیتابیس: ذکر دقیق نام ستون‌ها برای جلوگیری از ارور ساختاری دیتابیس
     async with aiosqlite.connect("zarvpn_web.db") as db:
         await db.execute(
             "INSERT OR IGNORE INTO users (user_id, username, balance, role, referred_by, used_test) VALUES (?, ?, 0, 'user', 0, 0)", 
@@ -78,16 +77,24 @@ async def start(c, m):
         )
         await db.commit()
 
-    # بررسی قفل کانال عضویت اجباری
     if not await is_subscribed(c, uid):
         async with aiosqlite.connect("zarvpn_web.db") as db:
             async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c_db: 
                 row = await c_db.fetchone()
                 channel = row[0] if row else "@your_channel"
         
+        # 🔥 فیکس قطعی ارور BUTTON_URL_INVALID: 
+        # اگر آیدی کانال در دیتابیس فرمت درستی نداشته باشد، دکمه به صورت شیشه‌ای ارسال نمی‌شود تا ربات کرش نکند.
+        clean_channel_username = channel.replace('@', '').strip()
+        if clean_channel_username and clean_channel_username != "your_channel":
+            channel_url = f"https://t.me/{clean_channel_username}"
+            reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 ورود به کانال", url=channel_url)]])
+        else:
+            reply_markup = None
+            
         await m.reply_text(
             f"❌ برای استفاده از خدمات ربات، ابتدا باید در کانال ما عضو شوید:\n\n📣 {channel}\n\nپس از عضویت، مجدداً دستور /start را ارسال کنید.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📢 ورود به کانال", url=f"https://t.me/{channel.replace('@','')}")]] if channel.startswith('@') else [])
+            reply_markup=reply_markup
         )
         return
 
@@ -124,7 +131,7 @@ async def callbacks(client: Client, call: CallbackQuery):
                 [InlineKeyboardButton("🔌 اتصال به سرور (مرزبان)", callback_data="bot_conn_marzban")],
                 [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]
             ]
-            await call.edit_message_text("⚙️ پنل مدیریت درون ربات ادمین:", reply_markup=InlineKeyboardMarkup(btns))
+            await call.edit_message_text("⚙_ پنل مدیریت درون ربات ادمین:", reply_markup=InlineKeyboardMarkup(btns))
 
         elif call.data == "bot_manage_users" and str(uid) == str(config.ADMIN_ID):
             async with db.execute("SELECT user_id, username FROM users LIMIT 10") as c: users = await c.fetchall()
