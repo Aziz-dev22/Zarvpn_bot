@@ -1,5 +1,7 @@
 import asyncio
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from core.config import settings
 from core.logger import logger
 
@@ -10,19 +12,22 @@ from handlers import services as services_handlers
 
 async def main():
     logger.info("Initializing database...")
-    # در صورت داشتن اسکریپت اولیه دیتابیس اینجا اجرا می‌شود
+    # زیرساخت اولیه دیتابیس
     logger.info("Database initialized successfully.")
 
-    # راه‌اندازی ربات با توکن دریافتی از کانفیگ
-    bot = Bot(token=settings.BOT_TOKEN, parse_mode="HTML")
+    # 🚀 اصلاح نوع تعریف parse_mode برای جلوگیری از TypeError و کرش ربات
+    bot = Bot(
+        token=settings.BOT_TOKEN, 
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
     dp = Dispatcher()
 
-    # 🚀 ثبت روترها در دیسپچر ربات (ترتیب ثبت مهم است)
+    # ثبت روترها در دیسپچر ربات
     dp.include_router(start.router)
     dp.include_router(wallet.router)
     dp.include_router(referral.router)
-    dp.include_router(admin_handlers.router)    # اتصال پنل مدیریت شیشه‌ای جدید
-    dp.include_router(services_handlers.router) # اتصال منوی خرید شیشه‌ای پکیج‌ها
+    dp.include_router(admin_handlers.router)    # اتصال پنل مدیریت شیشه‌ای
+    dp.include_router(services_handlers.router) # اتصال منوی خرید شیشه‌ای
 
     logger.info("Routers and handlers registered successfully.")
 
