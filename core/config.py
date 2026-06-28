@@ -1,32 +1,23 @@
 import os
-import sys
-from pathlib import Path
-from dotenv import load_dotenv
+from pydantic_settings import BaseSettings
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-env_path = BASE_DIR / ".env"
-
-# اگر فایل .env نبود، اسکریپت setup را اجرا کن
-if not env_path.exists():
-    # اضافه کردن مسیر ریشه به sys.path برای ایمپورت setup
-    sys.path.append(str(BASE_DIR))
-    from setup import run_setup
-    run_setup()
-
-# حالا فایل .env را لود کن
-load_dotenv(env_path)
-
-class Config:
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN")
+class Settings(BaseSettings):
+    BOT_TOKEN: str = ""
+    ADMIN_IDS: str = ""  # به صورت کاما جدا شده: 123,456
     
-    ADMIN_IDS: list[int] = [
-        int(admin_id.strip()) 
-        for admin_id in os.getenv("ADMIN_IDS", "").split(",") 
-        if admin_id.strip()
-    ]
-    
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///database/zarvpn.db")
-    SECRET_KEY: str = os.getenv("SECRET_KEY")
+    # تنظیمات پنل تحت وب
+    WEB_HOST: str = "0.0.0.0"
+    WEB_PORT: int = 8000
+    WEB_USERNAME: str = "admin"
+    WEB_PASSWORD: str = "admin123"
+    SECRET_KEY: str = "zarvpn_super_secret_key_2026"
 
-settings = Config()
+    @property
+    def admin_id_list(self):
+        return [int(x.strip()) for x in self.ADMIN_IDS.split(",") if x.strip().isdigit()]
 
+    class Config:
+        env_file = ".env"
+        extra = "ignore"
+
+settings = Settings()
