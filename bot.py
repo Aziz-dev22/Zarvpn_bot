@@ -10,14 +10,15 @@ app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=23749219, api
 panel_manager = MultiPanelManager()
 
 async def is_subscribed(client, user_id):
+    """سیستم هوشمند بررسی پویای عضویت در کانال قفل اجباری"""
     if str(user_id) == str(config.ADMIN_ID): 
         return True 
     async with aiosqlite.connect("zarvpn_web.db") as db:
         try:
             async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c: row = await c.fetchone(); channel = row[0] if row else None
             async with db.execute("SELECT value FROM settings WHERE key='sub_status'") as c: row_status = await c.fetchone(); sub_status = row_status[0] if row_status else "off"
-        except Exception: 
-            return True
+        except Exception: return True
+        
     if sub_status == "off" or not channel or channel == "@your_channel": 
         return True
     try:
@@ -27,11 +28,11 @@ async def is_subscribed(client, user_id):
         return True
 
 async def get_user_menu(user_id):
+    """منوی اصلی شیک نئونی ربات"""
     async with aiosqlite.connect("zarvpn_web.db") as db:
         try:
             async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: row = await c.fetchone(); test_status = row[0] if row else "off"
-        except Exception: 
-            test_status = "off"
+        except Exception: test_status = "off"
         
     m_url = "http://178.105.165.200:8080" 
     buttons = []
@@ -54,18 +55,17 @@ async def start(c, m):
         async with aiosqlite.connect("zarvpn_web.db") as db:
             await db.execute("INSERT OR IGNORE INTO users (user_id, username, balance, role, referred_by, used_test) VALUES (?, ?, 0, 'user', 0, 0)", (uid, uname))
             await db.commit()
-    except Exception: 
-        pass
+    except Exception: pass
 
     if not await is_subscribed(c, uid):
         async with aiosqlite.connect("zarvpn_web.db") as db:
             try: async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c_db: channel = (await c_db.fetchone())[0]
             except Exception: channel = "@your_channel"
         clean_ch = channel.replace('@', '').strip()
-        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 ورود به کانال", url=f"https://t.me/{clean_ch}")], [InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_sub_again")]]) if clean_ch else None
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 ورود به کانال", url=f"https://t.me/{clean_ch}")], [InlineKeyboardButton("✅ بررسی مجدد عضویت", callback_data="check_sub_again")]]) if clean_ch else None
         await m.reply_text(f"❌ ابتدا باید در کانال ما عضو شوید:\n📣 {channel}", reply_markup=markup)
         return
-    await m.reply_text("🤖 به سیستم فروش هوشمند کانکشن خوش آمدید:", reply_markup=await get_user_menu(uid))
+    await m.reply_text("🤖 به مگا سیستم فروش هوشمند کانکشن خوش آمدید:", reply_markup=await get_user_menu(uid))
 
 @app.on_callback_query()
 async def callbacks(client: Client, call: CallbackQuery):
@@ -116,7 +116,7 @@ async def callbacks(client: Client, call: CallbackQuery):
             async with db.execute("SELECT balance FROM users WHERE user_id=?", (uid,)) as c: balance = (await c.fetchone())[0]
             if not plan: await call.answer("❌ پلن یافت نشد!", show_alert=True); return
             if balance < plan[3]: await call.answer("❌ موجودی حساب شما کافی نیست!", show_alert=True); return
-            await call.answer("⚙️ در حال ساخت اکانت روی تمام اینباندها...", show_alert=True)
+            await call.answer("⚙️ در حال اتصال به سرور X-UI و ثبت روی تمامی اینباندها...", show_alert=True)
             v2_user = f"zar_{uid}_{pid}"
             res = await panel_manager.create_account(plan[4], v2_user, plan[1], plan[2])
             if res and res.get("status") == "success":
@@ -124,9 +124,9 @@ async def callbacks(client: Client, call: CallbackQuery):
                 await db.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (plan[3], uid))
                 await db.execute("INSERT INTO orders (user_id, plan_name, sub_link, v2ray_username, panel_type) VALUES (?, ?, ?, ?, ?)", (uid, plan[0], sub_link, v2_user, plan[4]))
                 await db.commit()
-                await call.edit_message_text(f"✅ **خرید با موفقیت انجام شد!**\n\n📦 پلن: {plan[0]}\n🔗 ساب‌لینک:\n`{sub_link}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]]))
+                await call.edit_message_text(f"✅ **خرید با موفقیت انجام شد!**\n\n📦 پلن: {plan[0]}\n🔗 ساب‌لینک اختصاصی شما:\n`{sub_link}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]]))
             else:
-                await call.edit_message_text(f"❌ خطا در صدور اکانت:\n`{res.get('msg', 'Unknown Error')}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="buy_menu")]]))
+                await call.edit_message_text(f"❌ خطا در صدور اکانت سرور:\n`{res.get('msg', 'Unknown Error')}`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="buy_menu")]]))
         elif call.data == "manage_services":
             try: async with db.execute("SELECT id, plan_name FROM orders WHERE user_id=?", (uid,)) as c: srvs = await c.fetchall()
             except Exception: srvs = []
@@ -184,3 +184,4 @@ async def callbacks(client: Client, call: CallbackQuery):
 
 if __name__ == "__main__":
     app.run()
+
