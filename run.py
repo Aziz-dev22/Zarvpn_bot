@@ -10,8 +10,8 @@ async def main():
     await init_db()
 
     await asyncio.gather(
-        start_bot(),
-        start_web()
+        asyncio.to_thread(start_web),
+        start_bot()
     )
 
 
