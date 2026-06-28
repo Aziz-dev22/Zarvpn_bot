@@ -9,6 +9,9 @@ from core.config import settings
 from core.database import init_db
 from core.logger import logger
 
+# ایمپورت روترهای هندلرها
+from handlers import start
+
 # تعریف آبجکت‌های اصلی ربات و دیسپچر
 bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
@@ -24,6 +27,10 @@ async def on_startup():
         logger.error(f"Failed to initialize database: {str(e)}")
         sys.exit(1)
 
+    # ثبت روترها (هندلرهای ربات)
+    dp.include_router(start.router)
+    logger.info("Routers and handlers registered.")
+
     logger.info("ZarVPN Bot is starting up...")
     
     # اطلاع‌رسانی به ادمین‌های ربات جهت آنلاین شدن سیستم
@@ -31,7 +38,6 @@ async def on_startup():
         try:
             await bot.send_message(admin_id, "🚀 <b>ربات زار وی‌پی‌ان با موفقیت آنلاین شد!</b>")
         except Exception:
-            # اگر ادمین هنوز ربات را استارت نکرده باشد، خطا لاگ می‌شود ولی ربات متوقف نمی‌شود
             logger.warning(f"Could not send startup message to admin {admin_id}. Has the admin started the bot?")
 
 async def on_shutdown():
@@ -45,8 +51,6 @@ async def main():
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
 
-    # تایید و ثبت هندلرهای ربات (در گام‌های بعدی هندلرها را به اینجا اضافه می‌کنیم)
-    # از اینجا به بعد ربات شروع به گوش دادن به پیام‌ها می‌کند
     try:
         # حذف وبهوک‌های قبلی و شروع پولینگ (Polling)
         await bot.delete_webhook(drop_pending_updates=True)
@@ -55,9 +59,7 @@ async def main():
         logger.critical(f"Critical error in main loop: {str(e)}")
 
 if __name__ == "__main__":
-    # اجرای حلقه اصلی برنامه به صورت Async
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logger.info("Bot stopped by user.")
-
