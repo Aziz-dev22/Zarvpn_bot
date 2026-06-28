@@ -1,123 +1,131 @@
 import httpx
 import uuid
 import secrets
+import json
+import re
 from core.logger import logger
 from panels.manager import BasePanelManager
 
 class SanaeiPanel(BasePanelManager):
     def __init__(self, panel_url: str, username: str, password: str):
-        # حذف اسلش آخر آدرس در صورت وجود برای جلوگیری از خرابی URLها
+        # حذف اسلش اضافه از آخر آدرس پنل
         self.panel_url = panel_url.rstrip("/")
         self.username = username
         self.password = password
-        self.client = httpx.AsyncClient(timeout=15.0, verify=False)
+        # غیرفعال کردن تایید SSL برای سازگاری با تمام سرورها و جلوگیری از ارورهای دست‌انداز گواهی
+        self.client = httpx.AsyncClient(timeout=20.0, verify=False)
         self.cookies = None
 
     async def login(self) -> bool:
-        """ورود به پنل ثنایی و ذخیره کوکی جلسات"""
         url = f"{self.panel_url}/login"
-        data = {"username": self.username, "password": self.password}
         try:
-            response = await self.client.post(url, data=data)
-            if response.status_code == 200 and response.json().get("success"):
-                self.cookies = response.cookies
-                logger.info(f"Successfully logged into Sanaei panel: {self.panel_url}")
+            res = await self.client.post(url, data={"username": self.username, "password": self.password})
+            if res.status_code == 200 and res.json().get("success"):
+                self.cookies = res.cookies
                 return True
-            logger.warning(f"Failed to login to Sanaei panel: {response.text}")
+            logger.error(f"Sanaei Login failed. Status: {res.status_code}, Response: {res.text}")
             return False
         except Exception as e:
-            logger.error(f"Error logging into Sanaei panel: {str(e)}")
+            logger.error(f"Sanaei Login exception: {str(e)}")
             return False
+
+    def sanitize_client_name(self, name: str) -> str:
+        """
+        پاکسازی نام ورودی کاربر برای اطمینان از اینکه فقط شامل حروف انگلیسی و عدد باشد.
+        """
+        # حذف هر کاراکتری به جز حروف انگلیسی و اعداد
+        sanitized = re.sub(r'[^a-zA-Z0-9]', '', name)
+        if not sanitized:
+            # نام پشتیبان در صورتی که ورودی کاربر کاملاً نامعتبر بود
+            return f"user{secrets.token_idx(3)}"
+        return sanitized
 
     async def create_user(self, email: str, data_limit_gb: int, expire_days: int) -> dict | None:
         """
-        ساخت یک کاربر جدید (Client) در پنل ثنایی
-        توجه: این متد به صورت پیش‌فرض کاربر را به اولین Inbound با شناسه 1 اضافه می‌کند.
+        ساخت کلاینت جدید با نام انتخابی مشتری و اتصال خودکار به سیستم ساب‌اسکریپشن جهت استفاده از تمام نودها و اینباندها
         """
-        if not self.cookies:
-            is_logged_in = await self.login()
-            if not is_logged_in:
-                return None
-
-        url = f"{self.panel_url}/xui/API/inbounds/addClient"
-        
-        # تولید UUID و ایمیل اختصاصی و رندوم
+        if not self.cookies and not await self.login(): 
+            return None
+            
         client_uuid = str(uuid.uuid4())
-        client_email = f"{email}_{secrets.token_hex(3)}"
         
-        # محاسبه حجم به بایت و زمان به میلی‌ثانیه
+        # استانداردسازی نام کلاینت (فقط انگلیسی و عدد) + پسوند رندوم برای جلوگیری از مشکل تکراری بودن نام در پنل
+        clean_name = self.sanitize_client_name(email)
+        client_email = f"{clean_name}_{secrets.token_hex(2)}"
+        
+        # تبدیل حجم به بایت
         bytes_limit = data_limit_gb * 1024 * 1024 * 1024
-        expiry_time = -(expire_days * 24 * 60 * 60 * 1000) # مقدار منفی در ثنایی یعنی تعداد روز اعتبار از زمان اولین اتصال
-
-        payload = {
-            "id": 1, # شناسه اینباند پیش‌فرض (قابل تغییر در آینده از مدیریت)
-            "settings": "{\"clients\":[{\"id\":\"" + client_uuid + "\",\"alterId\":0,\"email\":\"" + client_email + "\",\"limitIp\":2,\"totalGB\":" + str(bytes_limit) + ",\"expiryTime\":" + str(expiry_time) + ",\"enable\":true,\"tgId\":\"\",\"subId\":\"\"}]}"
+        
+        # محاسبه زمان انقضا به میلی‌ثانیه برای پنل ثنایی
+        expiry_time = -(expire_days * 24 * 60 * 60 * 1000)
+        
+        # ساختار پکیج کلاینت با فعال بودن دسترسی کامل و ساب‌اسکریپشن
+        client_settings = {
+            "id": client_uuid,
+            "alterId": 0,
+            "email": client_email,
+            "limitIp": 2, # محدودیت دو کاربره پیش‌فرض
+            "totalGB": bytes_limit,
+            "expiryTime": expiry_time,
+            "enable": True,
+            "tgId": "",
+            "subId": client_uuid # ست کردن SubId برای فعال شدن ساب‌اسکریپشن روی تمام نودها
         }
-
+        
+        # ارسال کلاینت به اینباند اصلی (Inbound 1). سیستم ساب پنل ثنایی خودش کلاینت را به بقیه مسیرها متصل می‌کند.
+        inbound_id = 1 
+        
+        payload = {
+            "id": inbound_id,
+            "settings": json.dumps({"clients": [client_settings]})
+        }
+        
+        url = f"{self.panel_url}/xui/API/inbounds/addClient"
         try:
-            response = await self.client.post(url, json=payload, cookies=self.cookies)
-            result = response.json()
-            if response.status_code == 200 and result.get("success"):
-                logger.info(f"User {client_email} created successfully in Sanaei.")
-                
-                # ساخت لینک اشتراک پیش‌فرض پنل ثنایی
+            res = await self.client.post(url, json=payload, cookies=self.cookies)
+            if res.status_code == 200 and res.json().get("success"):
+                # تولید لینک ساب‌اسکریپشن عمومی که تمام کانفیگ‌ها و نودها را به صورت پویا داخل خودش دارد
                 sub_url = f"{self.panel_url}/sub/{client_uuid}"
-                
                 return {
-                    "email": client_email,
-                    "uuid": client_uuid,
+                    "email": client_email, 
+                    "uuid": client_uuid, 
                     "sub_url": sub_url
                 }
-            logger.warning(f"Failed to create user in Sanaei: {response.text}")
+            logger.error(f"AddClient failed. Response: {res.text}")
             return None
         except Exception as e:
-            logger.error(f"Error creating user in Sanaei: {str(e)}")
+            logger.error(f"AddClient exception: {str(e)}")
             return None
 
     async def delete_user(self, email: str) -> bool:
-        """حذف کاربر با استفاده از ایمیل او از اینباند شماره 1"""
-        if not self.cookies:
-            await self.login()
-
-        # در پنل ثنایی برای حذف ابتدا باید UUID یا ایمیل کلاینت را در اینباند پیدا کرد
-        # برای سادگی، API مستقیم حذف با ایمیل در ورژن‌های جدید به این شکل است:
+        if not self.cookies and not await self.login(): return False
         url = f"{self.panel_url}/xui/API/inbounds/1/delClient/{email}"
-        
         try:
-            response = await self.client.post(url, cookies=self.cookies)
-            if response.status_code == 200 and response.json().get("success"):
-                logger.info(f"User {email} deleted from Sanaei panel.")
-                return True
-            return False
+            res = await self.client.post(url, cookies=self.cookies)
+            return res.status_code == 200 and res.json().get("success")
         except Exception as e:
-            logger.error(f"Error deleting user {email} from Sanaei: {str(e)}")
+            logger.error(f"Delete client exception: {str(e)}")
             return False
 
     async def get_user_info(self, email: str) -> dict | None:
-        """دریافت اطلاعات حجم مصرفی و وضعیت کاربر"""
-        if not self.cookies:
-            await self.login()
-
+        if not self.cookies and not await self.login(): return None
         url = f"{self.panel_url}/xui/API/inbounds/getClientTraffics/{email}"
         try:
-            response = await self.client.get(url, cookies=self.cookies)
-            result = response.json()
-            if response.status_code == 200 and result.get("success"):
-                data = result.get("obj", {})
+            res = await self.client.get(url, cookies=self.cookies)
+            if res.status_code == 200 and res.json().get("success"):
+                d = res.json().get("obj", {})
                 return {
-                    "email": email,
-                    "up": data.get("up", 0), # حجم آپلود به بایت
-                    "down": data.get("down", 0), # حجم دانلود به بایت
-                    "total": data.get("total", 0), # حجم کل مجاز به بایت
-                    "expiry_time": data.get("expiryTime", 0), # زمان انقضا
-                    "enable": data.get("enable", True)
+                    "email": email, 
+                    "up": d.get("up", 0), 
+                    "down": d.get("down", 0), 
+                    "total": d.get("total", 0), 
+                    "expiry_time": d.get("expiryTime", 0), 
+                    "enable": d.get("enable", True)
                 }
             return None
         except Exception as e:
-            logger.error(f"Error getting user info {email} from Sanaei: {str(e)}")
+            logger.error(f"Get Client info exception: {str(e)}")
             return None
 
-    async def close(self):
-        """بستن کانکشن httpx برای جلوگیری از نشت حافظه"""
+    async def close(self): 
         await self.client.aclose()
-
