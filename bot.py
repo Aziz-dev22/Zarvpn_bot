@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, Message, WebAppInfo
 from pyrogram.enums import ChatMemberStatus
@@ -10,7 +11,7 @@ app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=23749219, api
 panel_manager = MultiPanelManager()
 
 async def is_subscribed(client, user_id):
-    # ادمین اصلی نیازی به عضویت اجباری ندارد و ربات همیشه برای او باز می‌شود
+    # ادمین به صورت کامل از قفل کانال عبور می‌کند
     if str(user_id) == str(config.ADMIN_ID): 
         return True 
         
@@ -22,19 +23,16 @@ async def is_subscribed(client, user_id):
             row_status = await c.fetchone()
             sub_status = row_status[0] if row_status else "off"
             
-    # اگر قفل کانال غیرفعال باشد یا کانالی ست نشده باشد، همه دسترسی دارند
     if sub_status == "off" or not channel or channel == "@your_channel": 
         return True
         
     try:
-        # ربات بررسی می‌کند که آیا کاربر در کانال عضو است یا خیر
         member = await client.get_chat_member(channel, user_id)
         if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
             return True
         return False
     except Exception as e: 
-        # در صورتی که ربات در کانال ادمین نباشد، برای جلوگیری از خرابی ربات، دسترسی را باز می‌گذارد و خطا را لاگ می‌کند
-        print(f"خطای بررسی عضویت اجباری (احتمالاً ربات در کانال ادمین نیست): {e}")
+        print(f"Sub check log: {e}")
         return True
 
 async def get_user_menu(user_id):
@@ -62,7 +60,6 @@ async def get_user_menu(user_id):
     
     buttons.append([InlineKeyboardButton("📱 ورود به مینی‌اپ کاربری", web_app=WebAppInfo(url=f"{m_url}/miniapp?user_id={user_id}"))])
     
-    # بررسی دقیق آیدی ادمین جهت نمایش دکمه‌های پنل مدیریت مدرن
     if str(user_id) == str(config.ADMIN_ID):
         buttons.append([InlineKeyboardButton("⚙️ پنل مینی‌اپ مدیریت کامل ادمین", web_app=WebAppInfo(url=f"{m_url}/?admin_auth_id={user_id}"))])
         buttons.append([InlineKeyboardButton("🛠️ پنل مدیریت (درون ربات)", callback_data="admin_bot_menu")])
@@ -71,13 +68,17 @@ async def get_user_menu(user_id):
 @app.on_message(filters.command("start"))
 async def start(c, m):
     uid = m.from_user.id
+    uname = m.from_user.username or "User"
     
-    # ثبت یا بروزرسانی مشخصات کاربر در دیتابیس
+    # 🔥 حل باگ کرش دیتابیس: ذکر دقیق نام ستون‌ها برای جلوگیری از ارور ساختاری دیتابیس
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("INSERT OR IGNORE INTO users (user_id, username, balance) VALUES (?, ?, 0)", (uid, m.from_user.username or "User"))
+        await db.execute(
+            "INSERT OR IGNORE INTO users (user_id, username, balance, role, referred_by, used_test) VALUES (?, ?, 0, 'user', 0, 0)", 
+            (uid, uname)
+        )
         await db.commit()
 
-    # بررسی وضعیت عضویت اجباری
+    # بررسی قفل کانال عضویت اجباری
     if not await is_subscribed(c, uid):
         async with aiosqlite.connect("zarvpn_web.db") as db:
             async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c_db: 
