@@ -12,12 +12,13 @@ class SanaeiPanel(BasePanelManager):
         self.panel_url = panel_url.rstrip("/")
         self.username = username
         self.password = password
-        # غیرفعال کردن تایید SSL برای سازگاری با تمام سرورها و جلوگیری از ارورهای دست‌انداز گواهی
+        # غیرفعال کردن تایید SSL برای جلوگیری از ارورهای دست‌انداز گواهی
         self.client = httpx.AsyncClient(timeout=20.0, verify=False)
         self.cookies = None
 
     async def login(self) -> bool:
-        url = f"{self.panel_url}/login"
+        # آدرس لاگین بر اساس مستندات جدید پنل شما
+        url = f"{self.panel_url}/panel/api/login"
         try:
             res = await self.client.post(url, data={"username": self.username, "password": self.password})
             if res.status_code == 200 and res.json().get("success"):
@@ -31,48 +32,36 @@ class SanaeiPanel(BasePanelManager):
 
     def sanitize_client_name(self, name: str) -> str:
         """
-        پاکسازی نام ورودی کاربر برای اطمینان از اینکه فقط شامل حروف انگلیسی و عدد باشد.
+        پاکسازی نام ورودی کاربر برای اطمینان از انگلیسی و عدد بودن
         """
-        # حذف هر کاراکتری به جز حروف انگلیسی و اعداد
         sanitized = re.sub(r'[^a-zA-Z0-9]', '', name)
         if not sanitized:
-            # نام پشتیبان در صورتی که ورودی کاربر کاملاً نامعتبر بود
-            return f"user{secrets.token_idx(3)}"
+            return f"user{secrets.token_hex(3)}"
         return sanitized
 
     async def create_user(self, email: str, data_limit_gb: int, expire_days: int) -> dict | None:
-        """
-        ساخت کلاینت جدید با نام انتخابی مشتری و اتصال خودکار به سیستم ساب‌اسکریپشن جهت استفاده از تمام نودها و اینباندها
-        """
         if not self.cookies and not await self.login(): 
             return None
             
         client_uuid = str(uuid.uuid4())
-        
-        # استانداردسازی نام کلاینت (فقط انگلیسی و عدد) + پسوند رندوم برای جلوگیری از مشکل تکراری بودن نام در پنل
         clean_name = self.sanitize_client_name(email)
         client_email = f"{clean_name}_{secrets.token_hex(2)}"
-        
-        # تبدیل حجم به بایت
         bytes_limit = data_limit_gb * 1024 * 1024 * 1024
-        
-        # محاسبه زمان انقضا به میلی‌ثانیه برای پنل ثنایی
         expiry_time = -(expire_days * 24 * 60 * 60 * 1000)
         
-        # ساختار پکیج کلاینت با فعال بودن دسترسی کامل و ساب‌اسکریپشن
         client_settings = {
             "id": client_uuid,
             "alterId": 0,
             "email": client_email,
-            "limitIp": 2, # محدودیت دو کاربره پیش‌فرض
+            "limitIp": 2,
             "totalGB": bytes_limit,
             "expiryTime": expiry_time,
             "enable": True,
             "tgId": "",
-            "subId": client_uuid # ست کردن SubId برای فعال شدن ساب‌اسکریپشن روی تمام نودها
+            "subId": client_uuid
         }
         
-        # ارسال کلاینت به اینباند اصلی (Inbound 1). سیستم ساب پنل ثنایی خودش کلاینت را به بقیه مسیرها متصل می‌کند.
+        # آی‌دی اینباند پیش‌فرض ۱ (مطمئن شوید اینباند با ID: 1 در پنل ساخته شده است)
         inbound_id = 1 
         
         payload = {
@@ -80,11 +69,11 @@ class SanaeiPanel(BasePanelManager):
             "settings": json.dumps({"clients": [client_settings]})
         }
         
-        url = f"{self.panel_url}/xui/API/inbounds/addClient"
+        # روت جدید addClient بر اساس مستندات شما
+        url = f"{self.panel_url}/panel/api/inbounds/addClient"
         try:
             res = await self.client.post(url, json=payload, cookies=self.cookies)
             if res.status_code == 200 and res.json().get("success"):
-                # تولید لینک ساب‌اسکریپشن عمومی که تمام کانفیگ‌ها و نودها را به صورت پویا داخل خودش دارد
                 sub_url = f"{self.panel_url}/sub/{client_uuid}"
                 return {
                     "email": client_email, 
@@ -99,7 +88,8 @@ class SanaeiPanel(BasePanelManager):
 
     async def delete_user(self, email: str) -> bool:
         if not self.cookies and not await self.login(): return False
-        url = f"{self.panel_url}/xui/API/inbounds/1/delClient/{email}"
+        # روت جدید حذف کلاینت بر اساس داکیومنت شما
+        url = f"{self.panel_url}/panel/api/inbounds/1/delClient/{email}"
         try:
             res = await self.client.post(url, cookies=self.cookies)
             return res.status_code == 200 and res.json().get("success")
@@ -109,7 +99,8 @@ class SanaeiPanel(BasePanelManager):
 
     async def get_user_info(self, email: str) -> dict | None:
         if not self.cookies and not await self.login(): return None
-        url = f"{self.panel_url}/xui/API/inbounds/getClientTraffics/{email}"
+        # روت جدید دریافت اطلاعات کلاینت بر اساس داکیومنت شما
+        url = f"{self.panel_url}/panel/api/inbounds/getClientTraffics/{email}"
         try:
             res = await self.client.get(url, cookies=self.cookies)
             if res.status_code == 200 and res.json().get("success"):
