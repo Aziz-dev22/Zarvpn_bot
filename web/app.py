@@ -1,163 +1,155 @@
-from fastapi import FastAPI, Form, HTTPException, UploadFile, File
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse
 import aiosqlite
-import os
-import shutil
-from core.database import init_commercial_db
+from panels.manager import MultiPanelManager
 
-app = FastAPI(title="ZarVpn Mega Core Infrastructure")
+app = FastAPI()
+panel_manager = MultiPanelManager()
 
-@app.on_event("startup")
-async def startup_event():
-    await init_commercial_db()
-
-# --- پنل وب مدیریت کامل ادمین ---
 @app.get("/", response_class=HTMLResponse)
-async def admin_dashboard():
+async def web_admin_portal():
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        async with db.execute("SELECT * FROM server_settings") as c: servers = await c.fetchall()
-        async with db.execute("SELECT user_id, username, balance, used_test FROM users") as c: users = await c.fetchall()
-        async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: test_status = (await c.fetchone())[0]
-        async with db.execute("SELECT value FROM settings WHERE key='backup_channel'") as c: b_ch = (await c.fetchone())[0]
-
-    server_rows = "".join([f"<tr><td>{s[0].upper()}</td><td>{s[1]}</td><td>{s[2]}</td></tr>" for s in servers])
-    user_rows = "".join([f"""<tr>
-        <td>{u[0]}</td><td>{u[1]}</td><td>{u[2]:,} تومان</td><td>{"بله" if u[3]==1 else "خیر"}</td>
+        async with db.execute("SELECT * FROM settings") as c: settings = dict(await c.fetchall())
+        async with db.execute("SELECT user_id, username, balance FROM users") as c: users = await c.fetchall()
+    
+    user_rows = "".join([f"""
+    <tr>
+        <td>{u[0]}</td><td>{u[1]}</td><td>{u[2]:,} تومان</td>
         <td>
-            <form action="/web/edit-user" method="post" style="display:inline;">
-                <input type="hidden" name="uid" value="{u[0]}">
-                <input type="number" name="new_balance" placeholder="تغییر موجودی" required style="width:100px;">
-                <button type="submit">اعمال</button>
-            </form>
-            <a href="/web/delete-user/{u[0]}"><button class="btn-danger">حذف کاربر</button></a>
+            <a href="/web/user-details/{u[0]}"><button>👁️ مدیریت کاربر</button></a>
         </td>
     </tr>""" for u in users])
 
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head><meta charset="UTF-8"><title>پنل ادمین وب ZarVpn</title>
-    <style>
-        body {{ font-family: Tahoma; background: #0f172a; color: #e2e8f0; padding: 20px; }}
-        .box {{ background: #1e293b; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #334155; }}
-        input, select, button {{ padding: 8px; margin: 5px; border-radius: 6px; background: #334155; color: white; border: 1px solid #475569; }}
-        button {{ background: #2563eb; cursor: pointer; border: none; font-weight: bold; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-        th, td {{ padding: 10px; border-bottom: 1px solid #334155; text-align: right; }}
-        th {{ background: #334155; }}
-        .btn-danger {{ background: #dc2626; }}
-    </style></head>
+    return f"""
+    <html lang="fa" dir="rtl"><head><meta charset="UTF-8"><title>پنل مدیریت وب ZarVpn</title>
+    <style>body{{font-family:Tahoma; background:#0f172a; color:#fff; padding:20px;}} .card{{background:#1e293b; padding:15px; border-radius:8px; margin-bottom:15px;}} button{{background:#2563eb; color:white; border:none; padding:8px 12px; border-radius:5px; cursor:pointer;}} input, select{{padding:6px; background:#334155; color:white; border:none; margin:4px;}}</style></head>
     <body>
-        <h2>⚙️ پنل مدیریتی تحت وب یکپارچه ZarVpn</h2>
+        <h2>🌐 ابر پنل مدیریت مینی‌اپ و سرور ZarVpn</h2>
         
-        <div class="box">
-            <h3>🎛️ کنترل وضعیت لایسنس تست: {test_status.upper()}</h3>
-            <form action="/web/toggle-test" method="post"><button type="submit">روشن/خاموش کردن تست رایگان</button></form>
+        <div class="card">
+            <h3>💳 مدیریت روش‌های پرداخت و درگاه‌های صرافی (API)</h3>
+            <form action="/web/save-gateways" method="post">
+                <p>شماره کارت: <input type="text" name="card_number" value="{settings.get('card_number')}"> 
+                وضعیت: <select name="card_status"><option value="on" {'selected' if settings.get('card_status')=='on' else ''}>فعال</option><option value="off" {'selected' if settings.get('card_status')=='off' else ''}>غیرفعال</option></select></p>
+                
+                <p>آدرس ولت تتر: <input type="text" name="crypto_wallet" value="{settings.get('crypto_wallet')}"> 
+                وضعیت: <select name="crypto_status"><option value="on" {'selected' if settings.get('crypto_status')=='on' else ''}>فعال</option><option value="off" {'selected' if settings.get('crypto_status')=='off' else ''}>غیرفعال</option></select></p>
+                
+                <p>مرچنت سواپ‌ولت: <input type="text" name="swap_merchant" value="{settings.get('swapwallet_merchant')}"> 
+                وضعیت: <select name="swap_status"><option value="on" {'selected' if settings.get('swapwallet_status')=='on' else ''}>فعال</option><option value="off" {'selected' if settings.get('swapwallet_status')=='off' else ''}>غیرفعال</option></select></p>
+                
+                <p>توکن صرافی نوبیتکس: <input type="text" name="nobitex_token" value="{settings.get('nobitex_token')}"> 
+                وضعیت: <select name="nobitex_status"><option value="on" {'selected' if settings.get('nobitex_status')=='on' else ''}>فعال</option><option value="off" {'selected' if settings.get('nobitex_status')=='off' else ''}>غیرفعال</option></select></p>
+                
+                <button type="submit">💾 ذخیره تنظیمات مالی</button>
+            </form>
         </div>
 
-        <div class="box">
-            <h3>🔌 متصل کردن و پیکربندی پنل‌ها (مرزبان، سنایی، کانکتیکس)</h3>
-            <form action="/web/connect-panel" method="post">
+        <div class="card">
+            <h3>🔌 دکمه‌های جداگانه اتصال به سرورها (بند ۱)</h3>
+            <form action="/web/connect-server" method="post">
                 <select name="panel_type">
-                    <option value="connectix">نمایندگی Connectix</option>
-                    <option value="xui">X-UI سنایی</option>
-                    <option value="marzban">مرزبان</option>
+                    <option value="connectix">نمایندگی کانکتیکس (Connectix)</option>
+                    <option value="xui">پنل سنایی (Sanaei X-UI)</option>
+                    <option value="marzban">پنل مرزبان (Marzban)</option>
                 </select>
-                <input type="text" name="url" placeholder="آدرس سرور یا Endpoint API" required style="width:250px;">
-                <input type="text" name="user" placeholder="نام کاربری / توکن ادمین">
-                <input type="password" name="passw" placeholder="رمز عبور">
-                <button type="submit">ذخیره و اتصال سرور</button>
+                <input type="text" name="url" placeholder="آدرس پنل (URL)" required>
+                <input type="text" name="user" placeholder="نام کاربری / توکن ادمین" required>
+                <input type="password" name="passw" placeholder="رمز عبور پنل">
+                <button type="submit">⚡ تست اتصال و ذخیره پنل</button>
             </form>
-            <table><thead><tr><th>نوع پنل</th><th>آدرس اتصال</th><th>نام کاربری ادمین</th></tr></thead><tbody>{server_rows}</tbody></table>
         </div>
 
-        <div class="box">
-            <h3>👥 مدیریت و کنترل کاربران سیستم</h3>
-            <table>
-                <thead><tr><th>آیدی عددی</th><th>یوزرنیم</th><th>موجودی کیف پول</th><th>تست رایگان</th><th>عملیات ادمین</th></tr></thead>
-                <tbody>{user_rows}</tbody>
+        <div class="card">
+            <h3>👥 لیست کاربران</h3>
+            <table width="100%" border="1" style="border-collapse:collapse;">
+                <tr><th>آیدی عددی</th><th>یوزرنیم</th><th>موجودی</th><th>مدیریت</th></tr>
+                {user_rows}
             </table>
-        </div>
-
-        <div class="box">
-            <h3>💾 مدیریت پشتیبان‌گیری و بازیابی (Backup & Restore)</h3>
-            <a href="/web/backup/download"><button style="background:#16a34a;">📥 دانلود فایل دیتابیس فعلی</button></a>
-            <hr style="border-color:#334155; margin:15px 0;">
-            <form action="/web/backup/restore" method="post" enctype="multipart/form-data">
-                <label>📤 آپلود و بازیابی دیتابیس (فایل .db): </label>
-                <input type="file" name="file" required>
-                <button type="submit" class="btn-danger">🔂 بازیابی دیتابیس سیستم</button>
-            </form>
         </div>
     </body></html>
     """
-    return HTMLResponse(html)
 
-@app.post("/web/toggle-test")
-async def web_toggle():
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: cur = (await c.fetchone())[0]
-        await db.execute("UPDATE settings SET value=? WHERE key='test_status'", ("off" if cur == "on" else "on",))
-        await db.commit()
-    return HTMLResponse("<script>alert('وضعیت تست تغییر کرد'); window.location.href='/';</script>")
-
-@app.post("/web/connect-panel")
-async def web_connect(panel_type: str = Form(...), url: str = Form(...), user: str = Form(""), passw: str = Form("")):
+@app.post("/web/connect-server")
+async def web_connect_server(panel_type: str = Form(...), url: str = Form(...), user: str = Form(...), passw: str = Form("")):
+    # بند ۱: بررسی مشخصات ورود و اعلام وضعیت مشخصات اشتباه یا ورود موفق
+    success = await panel_manager.verify_and_connect(panel_type, url, user, passw)
+    if not success:
+        return HTMLResponse("<script>alert('❌ مشخصات اشتباه است! اتصال برقرار نشد.'); window.location.href='/';</script>")
+    
     async with aiosqlite.connect("zarvpn_web.db") as db:
         await db.execute("INSERT OR REPLACE INTO server_settings (panel_type, url, username, password) VALUES (?, ?, ?, ?)", (panel_type, url, user, passw))
         await db.commit()
-    return HTMLResponse("<script>alert('اتصال سرور با موفقیت ثبت شد'); window.location.href='/';</script>")
+    return HTMLResponse("<script>alert('✅ شما با موفقیت وارد شدید و پنل متصل شد.'); window.location.href='/';</script>")
 
-@app.post("/web/edit-user")
-async def web_edit_user(uid: int = Form(...), new_balance: int = Form(...)):
+@app.post("/web/save-gateways")
+async def web_save_gateways(card_number: str = Form(...), card_status: str = Form(...), crypto_wallet: str = Form(...), crypto_status: str = Form(...), swap_merchant: str = Form(...), swap_status: str = Form(...), nobitex_token: str = Form(...), nobitex_status: str = Form(...)):
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, uid))
+        updates = [('card_number', card_number), ('card_status', card_status), ('crypto_wallet', crypto_wallet), ('crypto_status', crypto_status), ('swapwallet_merchant', swap_merchant), ('swapwallet_status', swap_status), ('nobitex_token', nobitex_token), ('nobitex_status', nobitex_status)]
+        for k, v in updates:
+            await db.execute("UPDATE settings SET value=? WHERE key=?", (v, k))
         await db.commit()
-    return HTMLResponse("<script>alert('موجودی کاربر بروزرسانی شد'); window.location.href='/';</script>")
+    return HTMLResponse("<script>alert('تنظیمات مالی با موفقیت آپدیت شدند'); window.location.href='/';</script>")
 
-@app.get("/web/delete-user/{uid}")
-async def web_delete_user(uid: int):
+# بند ۲: صفحه اختصاصی مینی‌آپ جزئیات کاربر برای مدیریت کامل ادمین
+@app.get("/web/user-details/{uid}", response_class=HTMLResponse)
+async def web_user_details(uid: int):
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("DELETE FROM users WHERE user_id = ?", (uid,))
-        await db.commit()
-    return HTMLResponse("<script>alert('کاربر حذف شد'); window.location.href='/';</script>")
+        async with db.execute("SELECT username, balance FROM users WHERE user_id=?", (uid,)) as c: user = await c.fetchone()
+        async with db.execute("SELECT id, plan_name, sub_link, v2ray_username, panel_type FROM orders WHERE user_id=?", (uid,)) as c: services = await c.fetchall()
+    
+    if not user: return "کاربر یافت نشد"
+    
+    srv_rows = "".join([f"""
+    <div style='background:#334155; padding:10px; margin-top:5px; border-radius:5px;'>
+        <p>📦 <b>{s[1]}</b> ({s[4]}) | یوزرنیم پنل: <code>{s[3]}</code></p>
+        <p>🔗 لینک ساب: <input type='text' id='link_{s[0]}' value='{s[2]}' style='width:60%;'> 
+        <button onclick="window.location.href='/web/change-link/{s[0]}?new_link='+document.getElementById('link_{s[0]}').value">تغییر لینک</button>
+        <a href='/web/delete-service/{s[0]}'><button style='background:#dc2626;'>حذف کامل سرویس</button></a></p>
+    </div>""" for s in services])
 
-@app.get("/web/backup/download")
-async def web_download():
-    return FileResponse("zarvpn_web.db", filename="zarvpn_backup.db")
-
-@app.post("/web/backup/restore")
-async def web_restore(file: UploadFile = File(...)):
-    with open("zarvpn_web.db", "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return HTMLResponse("<script>alert('دیتابیس سیستم با موفقیت بازیابی شد. ربات را ری‌استارت کنید.'); window.location.href='/';</script>")
-
-# --- روت مینی‌اپ اختصاصی کاربران (Telegram Mini App UI) ---
-@app.get("/miniapp", response_class=HTMLResponse)
-async def telegram_mini_app(user_id: int):
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        async with db.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)) as c:
-            row = await c.fetchone()
-            balance = row[0] if row else 0
     return f"""
-    <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZarVpn MiniApp</title>
-    <style>
-        body {{ font-family: sans-serif; background: #000; color: #fff; text-align: center; padding: 20px; }}
-        .card {{ background: #111; padding: 20px; border-radius: 15px; margin: 15px 0; border: 1px solid #222; }}
-        .btn {{ display: block; width: 100%; padding: 12px; background: #007bff; color: white; border-radius: 10px; text-decoration: none; font-weight: bold; margin-top: 10px; }}
-    </style></head>
-    <body>
-        <h3>📱 خوش آمدید به مینی‌اپ تجاری ZarVpn</h3>
-        <div class="card">
-            <h4>💰 موجودی کیف پول شما:</h4>
-            <h2 style="color:#28a745;">{balance:,} تومان</h2>
-        </div>
-        <div class="card">
-            <a href="#" class="btn">🛍️ خرید سریع اشتراک کانکشن</a>
-            <a href="#" class="btn" style="background:#6c757d;">🛠️ مدیریت سرویس‌های من</a>
-        </div>
+    <html lang="fa" dir="rtl"><head><meta charset="UTF-8"><title>مدیریت کاربر {uid}</title></head>
+    <body style="font-family:Tahoma; background:#0f172a; color:#fff; padding:20px;">
+        <h2>👤 مدیریت کامل کاربر: {user[0]} ({uid})</h2>
+        <h3>💰 موجودی فعلی: {user[1]:,} تومان</h3>
+        
+        <form action="/web/modify-balance" method="post">
+            <input type="hidden" name="uid" value="{uid}">
+            <input type="number" name="amount" placeholder="مقدار اعتبار به تومان" required>
+            <button type="submit" name="action" value="add" style="background:#16a34a; color:white; padding:8px;">➕ افزایش موجودی</button>
+            <button type="submit" name="action" value="sub" style="background:#dc2626; color:white; padding:8px;">➖ کاهش موجودی</button>
+        </form>
+        
+        <hr style="margin:20px 0; border-color:#334155;">
+        <h3>🛠️ سرویس‌ها و کانکشن‌های کاربر:</h3>
+        {srv_rows if srv_rows else '<p>هیچ سرویس فعالی ندارد.</p>'}
+        <br><br><a href="/" style="color:#2563eb;">🔙 بازگشت به لیست اصلی</a>
     </body></html>
     """
+
+@app.post("/web/modify-balance")
+async def web_modify_balance(uid: int = Form(...), amount: int = Form(...), action: str = Form(...)):
+    async with aiosqlite.connect("zarvpn_web.db") as db:
+        if action == "add":
+            await db.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, uid))
+        else:
+            await db.execute("UPDATE users SET balance = max(0, balance - ?) WHERE user_id = ?", (amount, uid))
+        await db.commit()
+    return HTMLResponse(f"<script>alert('تغییرات موجودی اعمال شد'); window.location.href='/web/user-details/{uid}';</script>")
+
+@app.get("/web/change-link/{oid}")
+async def web_change_link(oid: int, new_link: str):
+    async with aiosqlite.connect("zarvpn_web.db") as db:
+        await db.execute("UPDATE orders SET sub_link=? WHERE id=?", (new_link, oid))
+        await db.commit()
+    return HTMLResponse("<script>alert('لینک کانکشن با موفقیت تغییر کرد'); window.location.href='/';</script>")
+
+@app.get("/web/delete-service/{oid}")
+async def web_delete_service(oid: int):
+    async with aiosqlite.connect("zarvpn_web.db") as db:
+        async with db.execute("SELECT panel_type, v2ray_username FROM orders WHERE id=?", (oid,)) as c: row = await c.fetchone()
+        if row: await panel_manager.delete_account(row[0], row[1])
+        await db.execute("DELETE FROM orders WHERE id=?", (oid,))
+        await db.commit()
+    return HTMLResponse("<script>alert('سرویس با موفقیت حذف شد'); window.location.href='/';</script>")
