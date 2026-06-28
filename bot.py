@@ -10,7 +10,7 @@ from core.database import init_db
 from core.logger import logger
 
 # ایمپورت روترهای هندلرها
-from handlers import start
+from handlers import start, wallet
 
 # تعریف آبجکت‌های اصلی ربات و دیسپچر
 bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
@@ -29,6 +29,7 @@ async def on_startup():
 
     # ثبت روترها (هندلرهای ربات)
     dp.include_router(start.router)
+    dp.include_router(wallet.router)
     logger.info("Routers and handlers registered.")
 
     logger.info("ZarVPN Bot is starting up...")
