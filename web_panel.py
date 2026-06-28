@@ -9,6 +9,11 @@ from templates.admin import HTML_TEMPLATE
 
 app = FastAPI(title="ZarVPN Web Panel")
 
+# 🟢 رفع مشکل ارور تصویر شما: منتقل کردن آدرس اصلی سرور به داشبورد ادمین
+@app.get("/")
+async def root_redirect():
+    return RedirectResponse(url="/admin/dashboard")
+
 def get_current_admin(request: Request):
     token = request.cookies.get("admin_session")
     if not token:
