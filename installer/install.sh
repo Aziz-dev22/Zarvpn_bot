@@ -1,19 +1,32 @@
-# FILE: run.py
+#!/bin/bash
+# FILE: installer/install.sh
 
-import asyncio
-from bot.bot import start_bot
-from web.app import start_web
-from core.database import init_db
+echo "=============================="
+echo "     ZARVPN PRO INSTALLER"
+echo "=============================="
 
+read -p "BOT TOKEN: " BOT_TOKEN
+read -p "API ID: " API_ID
+read -p "API HASH: " API_HASH
+read -p "ADMIN ID: " ADMIN_ID
+read -p "WEB PORT: " WEB_PORT
 
-async def main():
-    await init_db()
+cat > .env <<EOF
+BOT_TOKEN=$BOT_TOKEN
+API_ID=$API_ID
+API_HASH=$API_HASH
+ADMIN_ID=$ADMIN_ID
+WEB_PORT=$WEB_PORT
+SECRET_KEY=zarvpn_secret
+EOF
 
-    await asyncio.gather(
-        asyncio.to_thread(start_web),
-        start_bot()
-    )
+echo "Installing dependencies..."
 
+apt update -y
+apt install python3 python3-pip -y
 
-if __name__ == "__main__":
-    asyncio.run(main())
+pip3 install pyrogram tgcrypto flask aiosqlite
+
+echo "Starting bot..."
+
+python3 run.py
