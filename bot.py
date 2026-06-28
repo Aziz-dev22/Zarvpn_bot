@@ -14,12 +14,15 @@ async def is_subscribed(client, user_id):
         return True 
         
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c: 
-            row = await c.fetchone()
-            channel = row[0] if row else None
-        async with db.execute("SELECT value FROM settings WHERE key='sub_status'") as c:
-            row_status = await c.fetchone()
-            sub_status = row_status[0] if row_status else "off"
+        try:
+            async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c: 
+                row = await c.fetchone()
+                channel = row[0] if row else None
+            async with db.execute("SELECT value FROM settings WHERE key='sub_status'") as c:
+                row_status = await c.fetchone()
+                sub_status = row_status[0] if row_status else "off"
+        except Exception:
+            return True
             
     if sub_status == "off" or not channel or channel == "@your_channel": 
         return True
@@ -35,14 +38,13 @@ async def is_subscribed(client, user_id):
 
 async def get_user_menu(user_id):
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: 
-            row = await c.fetchone()
-            test_status = row[0] if row else "off"
+        try:
+            async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: 
+                row = await c.fetchone()
+                test_status = row[0] if row else "off"
+        except Exception:
+            test_status = "off"
         
-    # تضمین سلامت آدرس سرور برای دکمه‌های مینی‌آپ
-    server_ip = "178.105.165.200" 
-    m_url = f"http://{server_ip}:8080" 
-
     buttons = []
     if test_status == "on":
         buttons.append([InlineKeyboardButton("🎁 دریافت تست رایگان", callback_data="get_free_test")])
@@ -57,11 +59,11 @@ async def get_user_menu(user_id):
         InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="ref_menu")
     ])
     
-    # مینی‌آپ کاربری و ادمین با متد کاملاً استاندارد WebAppInfo
-    buttons.append([InlineKeyboardButton("📱 ورود به مینی‌اپ کاربری", web_app=WebAppInfo(url=f"{m_url}/miniapp?user_id={user_id}"))])
+    # 📌 تغییر موقت مینی‌آپ به دکمه درون ربات برای جلوگیری از ارور نبود HTTPS (SSL)
+    buttons.append([InlineKeyboardButton("📱 ورود به بخش کاربری", callback_data="user_panel_fallback")])
     
     if str(user_id) == str(config.ADMIN_ID):
-        buttons.append([InlineKeyboardButton("⚙️ پنل مینی‌اپ مدیریت کامل ادمین", web_app=WebAppInfo(url=f"{m_url}/"))])
+        buttons.append([InlineKeyboardButton("⚙️ پنل وب مدیریت (اطلاعات ورود)", callback_data="admin_web_info")])
         buttons.append([InlineKeyboardButton("🛠️ پنل مدیریت (درون ربات)", callback_data="admin_bot_menu")])
     return InlineKeyboardMarkup(buttons)
 
@@ -70,23 +72,29 @@ async def start(c, m):
     uid = m.from_user.id
     uname = m.from_user.username or "User"
     
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, balance, role, referred_by, used_test) VALUES (?, ?, 0, 'user', 0, 0)", 
-            (uid, uname)
-        )
-        await db.commit()
+    # ثبت کاربر در بلوک try/except برای جلوگیری از هرگونه توقف ربات به دلیل تداخل ستون‌ها
+    try:
+        async with aiosqlite.connect("zarvpn_web.db") as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO users (user_id, username, balance, role, referred_by, used_test) VALUES (?, ?, 0, 'user', 0, 0)", 
+                (uid, uname)
+            )
+            await db.commit()
+    except Exception as e:
+        print(f"Database insert log: {e}")
 
     if not await is_subscribed(c, uid):
         async with aiosqlite.connect("zarvpn_web.db") as db:
-            async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c_db: 
-                row = await c_db.fetchone()
-                channel = row[0] if row else "@your_channel"
+            try:
+                async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c_db: 
+                    row = await c_db.fetchone()
+                    channel = row[0] if row else "@your_channel"
+            except Exception:
+                channel = "@your_channel"
         
-        # 🔥 فیکس قطعی ارور BUTTON_URL_INVALID: 
-        # اگر آیدی کانال در دیتابیس فرمت درستی نداشته باشد، دکمه به صورت شیشه‌ای ارسال نمی‌شود تا ربات کرش نکند.
         clean_channel_username = channel.replace('@', '').strip()
-        if clean_channel_username and clean_channel_username != "your_channel":
+        # تلگرام لینک های بدون پروتکل یا حاوی آیدی پیشفرض را قبول نمیکند
+        if clean_channel_username and clean_channel_username != "your_channel" and not clean_channel_username.startswith("http"):
             channel_url = f"https://t.me/{clean_channel_username}"
             reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 ورود به کانال", url=channel_url)]])
         else:
@@ -112,9 +120,19 @@ async def callbacks(client: Client, call: CallbackQuery):
         if call.data == "back_to_main":
             await call.edit_message_text("🤖 منوی اصلی سیستم ZarVpn:", reply_markup=await get_user_menu(uid))
             
+        elif call.data == "admin_web_info" and str(uid) == str(config.ADMIN_ID):
+            await call.answer()
+            await call.message.reply_text("🌐 **آدرس پنل تحت وب مدیریت:**\n\n🔗 http://178.105.165.200:8080/\n\n📌 نکته: به دلیل عدم وجود SSL (https)، از دکمه مینی‌آپ مستقیم حذف شده و باید از طریق مرورگر گوشی وارد آن شوید.")
+
+        elif call.data == "user_panel_fallback":
+            await call.answer("📱 این بخش به زودی فعال می‌شود. در حال حاضر از منوی دکمه‌ای ربات استفاده کنید.", show_alert=True)
+
         elif call.data == "charge_menu":
-            async with db.execute("SELECT balance FROM users WHERE user_id = ?", (uid,)) as c: balance = (await c.fetchone())[0]
-            async with db.execute("SELECT * FROM settings") as c: settings = dict(await c.fetchall())
+            try:
+                async with db.execute("SELECT balance FROM users WHERE user_id = ?", (uid,)) as c: balance = (await c.fetchone())[0]
+                async with db.execute("SELECT * FROM settings") as c: settings = dict(await c.fetchall())
+            except Exception:
+                balance, settings = 0, {}
             
             text = f"💰 **بخش مدیریت مالی کیف پول**\n\n💵 موجودی فعلی: **{balance:,} تومان**\n\n📌 روش شارژ مورد نظر را انتخاب کنید:"
             btns = []
@@ -131,56 +149,17 @@ async def callbacks(client: Client, call: CallbackQuery):
                 [InlineKeyboardButton("🔌 اتصال به سرور (مرزبان)", callback_data="bot_conn_marzban")],
                 [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]
             ]
-            await call.edit_message_text("⚙_ پنل مدیریت درون ربات ادمین:", reply_markup=InlineKeyboardMarkup(btns))
+            await call.edit_message_text("⚙️ پنل مدیریت درون ربات ادمین:", reply_markup=InlineKeyboardMarkup(btns))
 
         elif call.data == "bot_manage_users" and str(uid) == str(config.ADMIN_ID):
-            async with db.execute("SELECT user_id, username FROM users LIMIT 10") as c: users = await c.fetchall()
-            btns = [[InlineKeyboardButton(f"👤 {u[1]} ({u[0]})", callback_data=f"adm_usr_{u[0]}")] for u in users]
+            try:
+                async with db.execute("SELECT user_id, username FROM users LIMIT 10") as c: users = await c.fetchall()
+                btns = [[InlineKeyboardButton(f"👤 {u[1]} ({u[0]})", callback_data=f"adm_usr_{u[0]}")] for u in users]
+            except Exception:
+                btns = []
             btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="admin_bot_menu")])
             await call.edit_message_text("👥 کاربر مورد نظر را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(btns))
 
-        elif call.data.startswith("adm_usr_") and str(uid) == str(config.ADMIN_ID):
-            t_id = int(call.data.split("_")[2])
-            async with db.execute("SELECT username, balance FROM users WHERE user_id=?", (t_id,)) as c: usr = await c.fetchone()
-            text = f"👤 کاربر: {usr[0]}\n🆔 آیدی: `{t_id}`\n💰 موجودی: {usr[1]:,} تومان"
-            btns = [
-                [InlineKeyboardButton("➕ افزایش موجودی", callback_data=f"b_inc_{t_id}"), InlineKeyboardButton("➖ کاهش موجودی", callback_data=f"b_dec_{t_id}")],
-                [InlineKeyboardButton("📦 سرویس‌های کاربر", callback_data=f"b_srv_{t_id}")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="bot_manage_users")]
-            ]
-            await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup(btns))
-
-        elif call.data.startswith("b_inc_") and str(uid) == str(config.ADMIN_ID):
-            t_id = int(call.data.split("_")[2])
-            await db.execute("UPDATE users SET balance = balance + 50000 WHERE user_id=?", (t_id,))
-            await db.commit()
-            await call.answer("✅ 50,000 تومان اضافه شد", show_alert=True)
-            
-        elif call.data.startswith("b_dec_") and str(uid) == str(config.ADMIN_ID):
-            t_id = int(call.data.split("_")[2])
-            await db.execute("UPDATE users SET balance = max(0, balance - 50000) WHERE user_id=?", (t_id,))
-            await db.commit()
-            await call.answer("❌ 50,000 تومان کسر شد", show_alert=True)
-
-        elif call.data in ["bot_conn_xui", "bot_conn_marzban"] and str(uid) == str(config.ADMIN_ID):
-            p_name = call.data.split("_")[2]
-            await call.edit_message_text(f"📌 جهت اتصال دکمه‌ای، دستور زیر را بفرستید:\n\n`/connect {p_name} URL USER PASS`")
-
-@app.on_message(filters.command("connect") & filters.user(int(config.ADMIN_ID)))
-async def bot_cmd_connect(client, message):
-    if len(message.command) < 4: return
-    ptype, url, user = message.command[1], message.command[2], message.command[3]
-    password = message.command[4] if len(message.command) > 4 else ""
-    
-    success = await panel_manager.verify_and_connect(ptype, url, user, password)
-    if not success:
-        await message.reply_text("❌ مشخصات اشتباه است! اتصال برقرار نشد.")
-        return
-        
-    async with aiosqlite.connect("zarvpn_web.db") as db:
-        await db.execute("INSERT OR REPLACE INTO server_settings (panel_type, url, username, password) VALUES (?, ?, ?, ?)", (ptype, url, user, password))
-        await db.commit()
-    await message.reply_text("✅ شما با موفقیت وارد شدید و پنل متصل شد.")
-
 if __name__ == "__main__":
     app.run()
+
