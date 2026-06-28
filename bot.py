@@ -2,44 +2,31 @@ import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+import uvicorn
+
 from core.config import settings
+from core.database import init_db
 from core.logger import logger
+from handlers import start
+from web_panel import app
 
-# وارد کردن هندلرهای مختلف ربات شما
-from handlers import start, wallet, referral
-from handlers import admin as admin_handlers
-from handlers import services as services_handlers
-
-async def main():
-    logger.info("Initializing database...")
-    # زیرساخت اولیه دیتابیس
-    logger.info("Database initialized successfully.")
-
-    # 🚀 اصلاح نوع تعریف parse_mode برای جلوگیری از TypeError و کرش ربات
-    bot = Bot(
-        token=settings.BOT_TOKEN, 
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+async def run_bot():
+    init_db()
+    bot = Bot(token=settings.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
-
-    # ثبت روترها در دیسپچر ربات
+    
     dp.include_router(start.router)
-    dp.include_router(wallet.router)
-    dp.include_router(referral.router)
-    dp.include_router(admin_handlers.router)    # اتصال پنل مدیریت شیشه‌ای
-    dp.include_router(services_handlers.router) # اتصال منوی خرید شیشه‌ای
+    
+    await bot.delete_webhook(drop_pending_updates=True)
+    logger.info("🤖 Telegram Bot is running...")
+    await dp.start_polling(bot)
 
-    logger.info("Routers and handlers registered successfully.")
-
-    try:
-        # حذف وبهوک‌های احتمالی قبلی و شروع فچ کردن زنده پیام‌ها
-        await bot.delete_webhook(drop_pending_updates=True)
-        print("🤖 ZarVPN Bot is Online and Running...")
-        await dp.start_polling(bot)
-    except Exception as e:
-        logger.critical(f"Bot crashed: {str(e)}")
-    finally:
-        await bot.session.close()
+def run_web():
+    logger.info("🌐 Web Panel is starting...")
+    uvicorn.run(app, host=settings.WEB_HOST, port=settings.WEB_PORT)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # اجرای همزمان ربات تلگرام و وب‌پنل ادمین روی سرور
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, run_web)
+    loop.run_until_complete(run_bot())
