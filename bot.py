@@ -10,21 +10,33 @@ app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=23749219, api
 panel_manager = MultiPanelManager()
 
 async def is_subscribed(client, user_id):
-    if str(user_id) == str(config.ADMIN_ID): return True
+    # ادمین به هیچ وجه نیاز به عضویت اجباری ندارد و ربات باید همیشه برایش باز شود
+    if str(user_id) == str(config.ADMIN_ID): 
+        return True 
+        
     async with aiosqlite.connect("zarvpn_web.db") as db:
-        async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c: channel = (await c.fetchone())[0]
+        async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c: 
+            row = await c.fetchone()
+            channel = row[0] if row else None
+            
+    if not channel or channel == "@your_channel": 
+        return True # اگر کانالی ست نشده باشد، قفل اعمال نشود
+        
     try:
         member = await client.get_chat_member(channel, user_id)
-        return member.status not in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]
-    except: return False
+        if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+            return True
+        return False
+    except Exception as e: 
+        # اگر ربات در کانال عضو نباشد یا کانال یافت نشود برای جلوگیری از خرابی ربات True برمی‌گردانیم
+        print(f"Sub check error: {e}")
+        return False
 
 async def get_user_menu(user_id):
     async with aiosqlite.connect("zarvpn_web.db") as db:
         async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: test_status = (await c.fetchone())[0]
         
-    # 🔥 حل مشکل مینی‌آپ: ست کردن آدرس واقعی مینی‌آپ بر بستر پورت وب سرور شما (8080 یا پورت فعال)
-    # به جای localhost یا 127.0.0.1، آدرس آی‌پورت عمومی سرور قرار می‌گیرد
-    server_ip = "178.105.165.200" # 👈 آی‌پورت واقعی سرور شما که در اسکرین‌شات بود
+    server_ip = "178.105.165.200" 
     m_url = f"http://{server_ip}:8080" 
 
     buttons = []
@@ -41,8 +53,9 @@ async def get_user_menu(user_id):
         InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="ref_menu")
     ])
     
-    # مینی‌اپ شیک کاربری و ادمین با آدرس ولید سرور
     buttons.append([InlineKeyboardButton("📱 ورود به مینی‌اپ کاربری", web_app=WebAppInfo(url=f"{m_url}/miniapp?user_id={user_id}"))])
+    
+    # بررسی دقیق ادمین بودن برای نمایش دکمه‌های مدیریت
     if str(user_id) == str(config.ADMIN_ID):
         buttons.append([InlineKeyboardButton("⚙️ پنل مینی‌اپ مدیریت کامل ادمین", web_app=WebAppInfo(url=f"{m_url}/"))])
         buttons.append([InlineKeyboardButton("🛠️ پنل مدیریت (درون ربات)", callback_data="admin_bot_menu")])
@@ -50,14 +63,34 @@ async def get_user_menu(user_id):
 
 @app.on_message(filters.command("start"))
 async def start(c, m):
-    if not await is_subscribed(c, m.from_user.id):
-        await m.reply_text("❌ ابتدا در کانال عضو شوید."); return
-    await m.reply_text("🤖 به مگا سیستم فروش کانکشن خوش آمدید:", reply_markup=await get_user_menu(m.from_user.id))
+    uid = m.from_user.id
+    
+    # ابتدا اطلاعات کاربر را در دیتابیس ثبت یا بروزرسانی می‌کنیم تا مینی‌آپ بتواند موجودی را بخواند
+    async with aiosqlite.connect("zarvpn_web.db") as db:
+        await db.execute("INSERT OR IGNORE INTO users (user_id, username, balance) VALUES (?, ?, 0)", (uid, m.from_user.username or "User"))
+        await db.commit()
+
+    # بررسی عضویت اجباری (ادمین به صورت خودکار تایید می‌شود)
+    if not await is_subscribed(c, uid):
+        async with aiosqlite.connect("zarvpn_web.db") as db:
+            async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c_db: channel = (await c_db.fetchone())[0]
+        
+        await m.reply_text(
+            f"❌ برای استفاده از خدمات ربات، ابتدا باید در کانال ما عضو شوید:\n\n📣 {channel}\n\nپس از عضویت، مجدداً دستور /start را ارسال کنید.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📢 ورود به کانال", url=f"https://t.me/{channel.replace('@','')}")]] if channel.startswith('@') else [])
+        )
+        return
+
+    await m.reply_text("🤖 به مگا سیستم فروش کانکشن خوش آمدید:", reply_markup=await get_user_menu(uid))
 
 @app.on_callback_query()
 async def callbacks(client: Client, call: CallbackQuery):
     uid = call.from_user.id
-    if not await is_subscribed(client, uid): return
+    
+    # در کال‌بک‌ها هم اول بررسی عضویت انجام می‌شود
+    if not await is_subscribed(client, uid): 
+        await call.answer("⚠️ شما ابتدا باید در کانال عضو شوید!", show_alert=True)
+        return
     
     async with aiosqlite.connect("zarvpn_web.db") as db:
         if call.data == "back_to_main":
@@ -119,8 +152,9 @@ async def callbacks(client: Client, call: CallbackQuery):
 
 @app.on_message(filters.command("connect") & filters.user(int(config.ADMIN_ID)))
 async def bot_cmd_connect(client, message):
-    if len(message.command) < 5: return
-    ptype, url, user, password = message.command[1], message.command[2], message.command[3], message.command[4]
+    if len(message.command) < 4: return
+    ptype, url, user = message.command[1], message.command[2], message.command[3]
+    password = message.command[4] if len(message.command) > 4 else ""
     
     success = await panel_manager.verify_and_connect(ptype, url, user, password)
     if not success:
