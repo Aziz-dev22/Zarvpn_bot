@@ -32,11 +32,11 @@ case $choice in
         uv pip install -r requirements.txt
         
         echo -e "${GREEN}[✓] ربات با موفقیت آپدیت شد! در حال اجرا...${NC}"
-        uv run python bot.py
+        exec uv run python bot.py
         ;;
         
     2)
-        read -p "⚠️ آیا مطمئن هستید که می‌خواهید ربات و تمام دیتابیس را کاملاً حذف کنید؟ [y/n]: " confirm
+        read -p "⚠️ آیا مطمئن هستید که می‌خواهید ربات و تمام دیتابیس را کاملاً حذف کنید? [y/n]: " confirm
         if [[ $confirm == [yY] || $confirm == [yY][eE][sS] ]]; then
             echo -e "\n${RED}[🗑️] در حال حذف کامل پروژه و اطلاعات...${NC}"
             cd ~
@@ -65,7 +65,7 @@ case $choice in
             
             clear
             echo -e "${GREEN}[✓] نصب مجدد با موفقیت انجام شد! شروع تنظیمات اولیه...${NC}"
-            uv run python bot.py
+            exec uv run python bot.py
         else
             echo -e "\n❌ عملیات لغو شد."
         fi
