@@ -7,7 +7,7 @@ from core import config
 from panels.manager import MultiPanelManager
 
 # مقداردهی اولیه ربات
-app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=23749219, api_hash="5f2bb6082cb0db48483bda1a63c6ea62")
+app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=29302323, api_hash="247e5f3f98d9fb20aab59a3a9472bcc4")
 panel_manager = MultiPanelManager()
 
 async def init_bot_db():
@@ -134,7 +134,6 @@ async def callbacks(client: Client, call: CallbackQuery):
             await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup(btns))
             
         elif call.data == "pay_card":
-            # 🔨 اصلاح ساختار خط ۱۳۸ که باعث ارور شده بود
             try: 
                 async with db.execute("SELECT value FROM settings WHERE key='card_number'") as c: 
                     row = await c.fetchone()
@@ -153,9 +152,14 @@ async def callbacks(client: Client, call: CallbackQuery):
             await call.edit_message_text(f"⚡ **واریز رمزارز:**\n{crypto_details}\n📌 پس از انتقال، شناسه تراکنش را به ادمین اعلام کنید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="charge_menu")]]))
             
         elif call.data == "buy_menu":
-            try: async with db.execute("SELECT id, name, price FROM plans") as c: plans = await c.fetchall()
-            except Exception: plans = []
-            if not plans: await call.answer("❌ هیچ پلنی در حال حاضر تعریف نشده است!", show_alert=True); return
+            try: 
+                async with db.execute("SELECT id, name, price FROM plans") as c: 
+                    plans = await c.fetchall()
+            except Exception: 
+                plans = []
+            if not plans: 
+                await call.answer("❌ هیچ پلنی در حال حاضر تعریف نشده است!", show_alert=True)
+                return
             btns = [[InlineKeyboardButton(f"📦 {p[1]} | {p[2]:,} تومان", callback_data=f"buy_id_{p[0]}")] for p in plans]
             btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")])
             await call.edit_message_text("🛍️ پلن‌های سرعت بالا:\n📌 پلن مورد نظر خود را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(btns))
