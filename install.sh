@@ -25,7 +25,6 @@ echo "📝 تنظیمات پیکربندی اولیه پروژه عمومی:"
 echo "--------------------------------------------------"
 read -p "توکن ربات تلگرام را وارد کنید: " bot_token
 read -p "آیدی عددی ادمین تلگرام را وارد کنید: " admin_ids
-read -p "پورت دلخواه برای ورود به پنل تحت وب: " web_port
 read -p "یوزرنیم دلخواه برای ورود به پنل تحت وب: " web_user
 read -p "پسورد دلخواه برای ورود به پنل تحت وب: " web_pass
 
@@ -33,7 +32,7 @@ cat << EOF > .env
 BOT_TOKEN="$bot_token"
 ADMIN_IDS="$admin_ids"
 WEB_HOST="0.0.0.0"
-WEB_PORT="$web_port"
+WEB_PORT=8050
 WEB_USERNAME="$web_user"
 WEB_PASSWORD="$web_pass"
 EOF
