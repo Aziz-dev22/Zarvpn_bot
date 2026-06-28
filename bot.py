@@ -11,7 +11,7 @@ app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=23749219, api
 panel_manager = MultiPanelManager()
 
 async def init_bot_db():
-    """گارانتی ساخت جداول در صورت عدم وجود، بدون ایجاد تداخل با پنل وب"""
+    """ثبت جداول پایه دیتابیس بدون تداخل با بخش وب"""
     async with aiosqlite.connect("zarvpn_web.db") as db:
         await db.execute('''CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY, username TEXT, balance INTEGER DEFAULT 0, 
@@ -77,7 +77,6 @@ async def start(c, m):
     uid = m.from_user.id
     uname = m.from_user.username or "User"
     
-    # ثبت کاربر با لایه Try جهت جلوگیری از قفل شدن ربات
     try:
         async with aiosqlite.connect("zarvpn_web.db") as db:
             await db.execute("INSERT OR IGNORE INTO users (user_id, username, balance, role, referred_by, used_test) VALUES (?, ?, 0, 'user', 0, 0)", (uid, uname))
@@ -135,13 +134,22 @@ async def callbacks(client: Client, call: CallbackQuery):
             await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup(btns))
             
         elif call.data == "pay_card":
-            try: async with db.execute("SELECT value FROM settings WHERE key='card_number'") as c: card = (await c.fetchone())[0]
-            except Exception: card = "ثبت نشده"
+            # 🔨 اصلاح ساختار خط ۱۳۸ که باعث ارور شده بود
+            try: 
+                async with db.execute("SELECT value FROM settings WHERE key='card_number'") as c: 
+                    row = await c.fetchone()
+                    card = row[0] if row else "ثبت نشده"
+            except Exception: 
+                card = "ثبت نشده"
             await call.edit_message_text(f"💳 **واریز کارت به کارت:**\n`{card}`\n📌 پس از واریز، رسید را برای پشتیبانی بفرستید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="charge_menu")]]))
             
         elif call.data == "pay_crypto":
-            try: async with db.execute("SELECT value FROM settings WHERE key='crypto_details'") as c: crypto_details = (await c.fetchone())[0]
-            except Exception: crypto_details = "آدرسی ثبت نشده است"
+            try: 
+                async with db.execute("SELECT value FROM settings WHERE key='crypto_details'") as c: 
+                    row = await c.fetchone()
+                    crypto_details = row[0] if row else "آدرسی ثبت نشده است"
+            except Exception: 
+                crypto_details = "آدرسی ثبت نشده است"
             await call.edit_message_text(f"⚡ **واریز رمزارز:**\n{crypto_details}\n📌 پس از انتقال، شناسه تراکنش را به ادمین اعلام کنید.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت", callback_data="charge_menu")]]))
             
         elif call.data == "buy_menu":
