@@ -32,13 +32,13 @@ cat << EOF > .env
 BOT_TOKEN="$bot_token"
 ADMIN_IDS="$admin_ids"
 WEB_HOST="0.0.0.0"
-WEB_PORT=8080
+WEB_PORT="$web_user"
 WEB_USERNAME="$web_user"
 WEB_PASSWORD="$web_pass"
 EOF
 
 clear
 echo "✅ پروژه با موفقیت نصب و پیکربندی شد!"
-echo "🚀 در حال راه‌اندازی ربات و پنل تحت وب شیشه‌ای زار وی‌پی‌ان روی پورت 8080..."
+echo "🚀 در حال راه‌اندازی ربات و پنل تحت وب شیشه‌ای زار وی‌پی‌ان روی پورت خالی 8050..."
 echo "--------------------------------------------------"
 uv run python bot.py
