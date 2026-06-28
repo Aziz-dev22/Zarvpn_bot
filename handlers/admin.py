@@ -1,4 +1,6 @@
-import secrets  # رفع خطای کرش ربات و NameError
+import secrets
+import sqlite3
+import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -6,11 +8,15 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.exceptions import TelegramBadRequest
 
 from core.config import settings
-from core.database import get_db_connection
 from panels.sanaei import SanaeiPanel
 from core.logger import logger
 
 router = Router()
+
+# مسیر استاندارد دیتابیس پروژه شما
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "bot.db")
+if not os.path.exists(os.path.dirname(DB_PATH)):
+    DB_PATH = "bot.db"  # مسیر جایگزین در صورت تفاوت پوشه‌بندی
 
 class AdminStates(StatesGroup):
     waiting_for_server_data = State()
@@ -31,10 +37,13 @@ async def admin_panel(message: Message):
 
 @router.callback_query(F.data == "admin_servers")
 async def list_servers(callback: CallbackQuery):
-    conn = get_db_connection()
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, url FROM servers")
-    servers = cursor.fetchall()
+    try:
+        cursor.execute("SELECT id, name, url FROM servers")
+        servers = cursor.fetchall()
+    except sqlite3.OperationalError:
+        servers = []
     conn.close()
 
     keyboard = []
@@ -76,21 +85,18 @@ async def save_server(message: Message, state: FSMContext):
             return
         
         name, url, user, password = parts[0].strip(), parts[1].strip(), parts[2].strip(), parts[3].strip()
-        
         status_msg = await message.answer("🔄 <b>در حال بررسی و تست اتصال به پنل ثنایی...</b>")
         
-        # تست اتصال واقعی با کدهای جدید sanaei.py
         panel = SanaeiPanel(url, user, password)
         login_success = await panel.login()
         await panel.close()
         
         if not login_success:
-            await status_msg.edit_text("❌ <b>خطا در اتصال!</b> مشخصات ورود، آدرس یا پورت اشتباه است و پنل درخواست را رد کرد.")
+            await status_msg.edit_text("❌ <b>خطا در اتصال!</b> مشخصات ورود، آدرس یا پورت اشتباه است.")
             await state.clear()
             return
             
-        # ذخیره در دیتابیس در صورت تایید مشخصات
-        conn = get_db_connection()
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO servers (name, url, username, password) VALUES (?, ?, ?, ?)",
@@ -108,7 +114,7 @@ async def save_server(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("del_srv_"))
 async def delete_server(callback: CallbackQuery):
     server_id = callback.data.split("_")[2]
-    conn = get_db_connection()
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM servers WHERE id = ?", (server_id,))
     conn.commit()
@@ -118,10 +124,13 @@ async def delete_server(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_packages")
 async def list_packages(callback: CallbackQuery):
-    conn = get_db_connection()
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, name, size_gb, days, price FROM packages")
-    packages = cursor.fetchall()
+    try:
+        cursor.execute("SELECT id, name, size_gb, days, price FROM packages")
+        packages = cursor.fetchall()
+    except sqlite3.OperationalError:
+        packages = []
     conn.close()
 
     keyboard = []
@@ -163,7 +172,7 @@ async def save_package(message: Message, state: FSMContext):
         
         name, size, days, price = parts[0].strip(), int(parts[1]), int(parts[2]), int(parts[3])
         
-        conn = get_db_connection()
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO packages (name, size_gb, days, price) VALUES (?, ?, ?, ?)",
@@ -175,13 +184,13 @@ async def save_package(message: Message, state: FSMContext):
         await message.answer(f"✅ پکیج <b>{name}</b> با موفقیت اضافه شد.")
         await state.clear()
     except Exception as e:
-        await message.answer(f"❌ خطا در قالب اعداد وارد شده: {str(e)}")
+        await message.answer(f"❌ خطا در قالب اطلاعات: {str(e)}")
         await state.clear()
 
 @router.callback_query(F.data.startswith("del_pkg_"))
 async def delete_package(callback: CallbackQuery):
     pkg_id = callback.data.split("_")[2]
-    conn = get_db_connection()
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
     conn.commit()
