@@ -1,5 +1,6 @@
 import uvicorn
 import jwt
+import datetime
 from fastapi import FastAPI, Depends, HTTPException, Form, status, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from core.config import settings
@@ -9,10 +10,65 @@ from templates.admin import HTML_TEMPLATE
 
 app = FastAPI(title="ZarVPN Web Panel")
 
-# 🟢 رفع مشکل ارور تصویر شما: منتقل کردن آدرس اصلی سرور به داشبورد ادمین
+# قالب شیک صفحه لاگین نئومورفیسم در صورت ورود مستقیم
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ورود به ZARVPN</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vazirmatn@3.3.0/Vazirmatn-font-face.css">
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: Vazirmatn, sans-serif; }}
+        body {{ background-color: #e0e8f6; display: flex; justify-content: center; align-items: center; height: 100vh; padding: 20px; }}
+        .login-card {{ background: #e0e8f6; border-radius: 24px; box-shadow: 9px 9px 16px #bec8d6, -9px -9px 16px #ffffff; padding: 35px; width: 100%; max-width: 400px; text-align: center; }}
+        .title {{ font-size: 22px; font-weight: bold; color: #1a2332; margin-bottom: 25px; }}
+        input {{ width: 100%; padding: 12px 15px; border: none; background: #e0e8f6; border-radius: 12px; box-shadow: inset 3px 3px 6px #bec8d6, inset -3px -3px 6px #ffffff; margin-bottom: 20px; outline: none; text-align: center; }}
+        button {{ width: 100%; padding: 14px; border: none; background: #e0e8f6; color: #2b6cb0; font-weight: bold; border-radius: 14px; box-shadow: 5px 5px 10px #bec8d6, -5px -5px 10px #ffffff; cursor: pointer; }}
+        button:active {{ box-shadow: inset 3px 3px 6px #bec8d6, inset -3px -3px 6px #ffffff; }}
+        .error {{ color: #e53e3e; margin-bottom: 15px; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="title">🔐 ورود به پنل مدیریت زار وی‌پی‌ان</div>
+        {error_html}
+        <form action="/login" method="post">
+            <input type="text" name="username" placeholder="نام کاربری پنل وب" required>
+            <input type="password" name="password" placeholder="کلمه عبور پنل وب" required>
+            <button type="submit">ورود به حساب</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
 @app.get("/")
-async def root_redirect():
-    return RedirectResponse(url="/admin/dashboard")
+async def root(request: Request):
+    # اگر از قبل لاگین بود مستقیم برود داشبورد، وگرنه فرم لاگین
+    token = request.cookies.get("admin_session")
+    if token:
+        try:
+            jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            return RedirectResponse(url="/admin/dashboard")
+        except Exception:
+            pass
+    return HTMLResponse(LOGIN_TEMPLATE.format(error_html=""))
+
+@app.post("/login")
+async def login_submit(username: str = Form(...), password: str = Form(...)):
+    if username == settings.WEB_USERNAME and password == settings.WEB_PASSWORD:
+        token = jwt.encode(
+            {"admin_id": 0, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)},
+            settings.SECRET_KEY, algorithm="HS256"
+        )
+        response = RedirectResponse(url="/admin/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+        response.set_cookie(key="admin_session", value=token, httponly=True)
+        return response
+    
+    error_msg = "<div class='error'>❌ نام کاربری یا کلمه عبور اشتباه است.</div>"
+    return HTMLResponse(LOGIN_TEMPLATE.format(error_html=error_msg))
 
 def get_current_admin(request: Request):
     token = request.cookies.get("admin_session")
@@ -32,12 +88,11 @@ async def login_with_token(token: str):
         response.set_cookie(key="admin_session", value=token, httponly=True)
         return response
     except Exception:
-        raise HTTPException(status_code=403, detail="توکن ورود نامعتبر یا منقضی شده است.")
+        return RedirectResponse(url="/")
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
 async def dashboard(payload: dict = Depends(get_current_admin)):
     conn = get_db_connection()
-    
     users_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     servers = conn.execute("SELECT * FROM servers").fetchall()
     packages = conn.execute("SELECT * FROM packages").fetchall()
