@@ -54,7 +54,7 @@ case $choice in
             cd ~
             rm -rf Zarvpn_bot
             
-            echo -e "${BLUE}[🚀] در حال دانلود و نصب مجدد نسخه صفر از گیت‌هاب...${NC}"
+            echo -e "\n${BLUE}[🚀] در حال دانلود و نصب مجدد نسخه صفر از گیت‌هاب...${NC}"
             git clone https://github.com/Aziz-dev22/Zarvpn_bot.git
             cd Zarvpn_bot
             
@@ -81,4 +81,3 @@ case $choice in
         exit 1
         ;;
 esac
-
