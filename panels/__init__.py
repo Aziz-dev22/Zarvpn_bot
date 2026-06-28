@@ -1,2 +1,0 @@
-# ZarVpn Panels Module
-
