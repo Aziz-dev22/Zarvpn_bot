@@ -20,7 +20,7 @@
 curl -sL [https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/install.sh](https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/install.sh) | bash
 
 
-
+---
 
 ⚙️ مدیریت، آپدیت و حذف ربات (Management Toolkit)
 ​هر زمان که خواستید ربات را آپدیت کنید (بدون پاک شدن اطلاعات دیتابیس)، آن را کاملاً حذف کنید و یا مجدداً از صفر نصب کنید، کافیست دستور زیر را در ترمینال سرور بزنید تا منوی مدیریت هوشمند برای شما باز شود:
