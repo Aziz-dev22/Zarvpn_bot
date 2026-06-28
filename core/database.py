@@ -18,7 +18,7 @@ async def init_commercial_db():
             ('crypto_details', 'تتر TRC20:\nثبت نشده'), ('crypto_status', 'on'),
             ('swapwallet_merchant', ''), ('swapwallet_api', ''), ('swapwallet_endpoint', 'https://swapwallet.ir/api'), ('swapwallet_status', 'on'),
             ('channel_id', '@your_channel'), ('sub_status', 'off'), ('test_status', 'on'),
-            ('web_admin_user', 'admin'), ('web_admin_pass', 'admin123') # 🔒 مشخصات ورود به پنل وب
+            ('web_admin_user', 'admin'), ('web_admin_pass', 'admin123')
         ]
         for key, val in defaults:
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, val))
