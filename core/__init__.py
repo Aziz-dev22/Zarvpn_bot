@@ -1,2 +1,0 @@
-# ZarVpn Core Module
-
