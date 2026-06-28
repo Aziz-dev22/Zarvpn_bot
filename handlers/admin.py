@@ -1,235 +1,200 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from sqlalchemy.orm import Session
+from aiogram.exceptions import TelegramBadRequest
 
 from core.config import settings
-from core.database import SessionLocal, ServerPanel, Package, User
+from core.database import get_db_connection
+from panels.sanaei import SanaeiPanel
 from core.logger import logger
 
 router = Router()
 
-# تعریف وضعیت‌ها برای ادمین (تعریف سرور و پکیج)
 class AdminStates(StatesGroup):
-    # مراحل اضافه کردن سرور
-    ADD_SERVER_NAME = State()
-    ADD_SERVER_URL = State()
-    ADD_SERVER_USER = State()
-    ADD_SERVER_PASS = State()
-    
-    # مراحل اضافه کردن پکیج
-    ADD_PKG_TITLE = State()
-    ADD_PKG_PRICE = State()
-    ADD_PKG_VOLUME = State()
-    ADD_PKG_DAYS = State()
+    waiting_for_server_data = State()
+    waiting_for_package_data = State()
 
+def get_admin_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🖥️ مدیریت سرورها", callback_query_data="admin_servers")],
+        [InlineKeyboardButton(text="📦 مدیریت پکیج‌ها", callback_query_data="admin_packages")],
+        [InlineKeyboardButton(text="❌ بستن پنل", callback_query_data="close_admin")]
+    ])
 
-def get_admin_keyboard() -> InlineKeyboardMarkup:
-    """منوی دکمه‌های پنل مدیریت ادمین"""
-    buttons = [
-        [
-            InlineKeyboardButton(text="➕ افزودن سرور/پنل X-UI", callback_data="admin_add_server"),
-            InlineKeyboardButton(text="🖥️ لیست سرورها", callback_data="admin_list_servers")
-        ],
-        [
-            InlineKeyboardButton(text="➕ افزودن پکیج فروشی", callback_data="admin_add_package"),
-            InlineKeyboardButton(text="📦 لیست پکیج‌ها", callback_data="admin_list_packages")
-        ],
-        [
-            InlineKeyboardButton(text="📊 آمار کلی ربات", callback_data="admin_stats"),
-            InlineKeyboardButton(text="🔙 منوی اصلی ربات", callback_data="back_to_main")
-        ]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-@router.callback_query(F.data == "admin_panel")
-async def show_admin_panel(callback: CallbackQuery, state: FSMContext):
-    """ورود به پنل مدیریت (فقط برای ادمین‌های مجاز)"""
-    await state.clear()
-    tg_id = callback.from_user.id
-    
-    if tg_id not in settings.ADMIN_IDS:
-        await callback.answer("❌ شما دسترسی به این بخش را ندارید.", show_alert=True)
+@router.message(F.text == "/admin")
+async def admin_panel(message: Message):
+    if message.from_user.id not in settings.ADMIN_IDS:
         return
-        
-    text = "⚙️ <b>به پنل مدیریت ادمین زار وی‌پی‌ان خوش آمدید.</b>\n\nلطفاً از دکمه‌های زیر برای مدیریت ربات استفاده کنید:"
-    await callback.message.edit_text(text, reply_markup=get_admin_keyboard())
-    await callback.answer()
+    await message.answer("⚙️ <b>به پنل مدیریت زار وی‌پی‌ان خوش آمدید:</b>", reply_markup=get_admin_keyboard())
 
+@router.callback_query(F.data == "admin_servers")
+async def list_servers(callback: CallbackQuery):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, url FROM servers")
+    servers = cursor.fetchall()
+    conn.close()
 
-# ================= SYSTEM ADD SERVER =================
-
-@router.callback_query(F.data == "admin_add_server")
-async def admin_add_server_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in settings.ADMIN_IDS: return
-    
-    await callback.message.edit_text(
-        "🖥️ <b>گام اول:</b> یک نام مستعار برای این سرور وارد کنید:\n(مثال: سرور آلمان ۱)",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ انصراف", callback_data="admin_panel")]])
-    )
-    await state.set_state(AdminStates.ADD_SERVER_NAME)
-    await callback.answer()
-
-@router.message(AdminStates.ADD_SERVER_NAME)
-async def admin_save_server_name(message: Message, state: FSMContext):
-    await state.update_data(name=message.text.strip())
-    await message.answer("🔗 <b>گام دوم:</b> آدرس کامل پنل ثنایی (به همراه پورت) را وارد کنید:\n(مثال: http://185.2.3.4:2053)")
-    await state.set_state(AdminStates.ADD_SERVER_URL)
-
-@router.message(AdminStates.ADD_SERVER_URL)
-async def admin_save_server_url(message: Message, state: FSMContext):
-    await state.update_data(url=message.text.strip())
-    await message.answer("👤 <b>گام سوم:</b> نام کاربری (Username) پنل را وارد کنید:")
-    await state.set_state(AdminStates.ADD_SERVER_USER)
-
-@router.message(AdminStates.ADD_SERVER_USER)
-async def admin_save_server_user(message: Message, state: FSMContext):
-    await state.update_data(username=message.text.strip())
-    await message.answer("🔑 <b>گام آخر:</b> رمز عبور (Password) پنل را وارد کنید:")
-    await state.set_state(AdminStates.ADD_SERVER_PASS)
-
-@router.message(AdminStates.ADD_SERVER_PASS)
-async def admin_save_server_final(message: Message, state: FSMContext):
-    password = message.text.strip()
-    data = await state.get_data()
-    
-    db: Session = SessionLocal()
-    try:
-        new_panel = ServerPanel(
-            name=data['name'],
-            panel_type="sanaei",
-            url=data['url'],
-            username=data['username'],
-            password=password,
-            is_active=True
-        )
-        db.add(new_panel)
-        db.commit()
-        await message.answer(f"✅ پنل <b>{data['name']}</b> با موفقیت در دیتابیس ثبت و فعال شد.", reply_markup=get_admin_keyboard())
-    except Exception as e:
-        logger.error(f"Error saving panel: {str(e)}")
-        await message.answer("❌ خطایی در ذخیره پنل رخ داد.")
-    finally:
-        db.close()
-        await state.clear()
-
-
-# ================= SYSTEM ADD PACKAGE =================
-
-@router.callback_query(F.data == "admin_add_package")
-async def admin_add_package_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in settings.ADMIN_IDS: return
-    
-    await callback.message.edit_text(
-        "📦 <b>گام اول:</b> عنوان پکیج را وارد کنید:\n(مثال: ۱ ماهه ۲۰ گیگ)",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ انصراف", callback_data="admin_panel")]])
-    )
-    await state.set_state(AdminStates.ADD_PKG_TITLE)
-    await callback.answer()
-
-@router.message(AdminStates.ADD_PKG_TITLE)
-async def admin_save_pkg_title(message: Message, state: FSMContext):
-    await state.update_data(title=message.text.strip())
-    await message.answer("💰 <b>گام دوم:</b> قیمت پکیج را به <b>تومان</b> و فقط عدد وارد کنید:\n(مثال: 50000)")
-    await state.set_state(AdminStates.ADD_PKG_PRICE)
-
-@router.message(AdminStates.ADD_PKG_PRICE)
-async def admin_save_pkg_price(message: Message, state: FSMContext):
-    if not message.text.strip().isdigit():
-        await message.answer("❌ لطفاً قیمت را فقط به صورت عدد انگلیسی وارد کنید:")
-        return
-    await state.update_data(price=float(message.text.strip()))
-    await message.answer("📊 <b>گام سوم:</b> میزان حجم مجاز را به <b>گیگابایت</b> وارد کنید (فقط عدد):\n(مثال: 20)")
-    await state.set_state(AdminStates.ADD_PKG_VOLUME)
-
-@router.message(AdminStates.ADD_PKG_VOLUME)
-async def admin_save_pkg_volume(message: Message, state: FSMContext):
-    if not message.text.strip().isdigit():
-        await message.answer("❌ لطفاً حجم را فقط عدد وارد کنید:")
-        return
-    await state.update_data(volume_gb=int(message.text.strip()))
-    await message.answer("📅 <b>گام آخر:</b> تعداد روز اعتبار پکیج را وارد کنید:\n(مثال: 30)")
-    await state.set_state(AdminStates.ADD_PKG_DAYS)
-
-@router.message(AdminStates.ADD_PKG_DAYS)
-async def admin_save_pkg_final(message: Message, state: FSMContext):
-    if not message.text.strip().isdigit():
-        await message.answer("❌ لطفاً تعداد روز را فقط عدد وارد کنید:")
-        return
-    days = int(message.text.strip())
-    data = await state.get_data()
-    
-    db: Session = SessionLocal()
-    try:
-        new_pkg = Package(
-            title=data['title'],
-            price=data['price'],
-            volume_gb=data['volume_gb'],
-            days=days,
-            is_active=True
-        )
-        db.add(new_pkg)
-        db.commit()
-        await message.answer(f"✅ پکیج <b>{data['title']}</b> با موفقیت تعریف شد و در ربات قرار گرفت.", reply_markup=get_admin_keyboard())
-    except Exception as e:
-        logger.error(f"Error saving package: {str(e)}")
-        await message.answer("❌ خطایی در ذخیره پکیج رخ داد.")
-    finally:
-        db.close()
-        await state.clear()
-
-
-# ================= LISTS & STATS =================
-
-@router.callback_query(F.data == "admin_list_servers")
-async def admin_list_servers(callback: CallbackQuery):
-    if callback.from_user.id not in settings.ADMIN_IDS: return
-    db: Session = SessionLocal()
-    panels = db.query(ServerPanel).all()
-    db.close()
-    
-    if not panels:
-        await callback.answer("❌ هیچ سروری تعریف نشده است.", show_alert=True)
-        return
-        
+    keyboard = []
     text = "🖥️ <b>لیست سرورهای متصل:</b>\n\n"
-    for p in panels:
-        status = "🟢 فعال" if p.is_active else "🔴 غیرفعال"
-        text += f"▪️ نام: {p.name}\nآدرس: {p.url}\nوضعیت: {status}\n\n"
-        
-    await callback.message.edit_text(text, reply_markup=get_admin_keyboard())
+    
+    if not servers:
+        text += "هیچ سروری ثبت نشده است."
+    for s in servers:
+        text += f"🔹 نام: {s[1]}\n🔗 آدرس: {s[2]}\n\n"
+        keyboard.append([InlineKeyboardButton(text=f"🗑️ حذف {s[1]}", callback_query_data=f"del_srv_{s[0]}")])
+    
+    keyboard.append([InlineKeyboardButton(text="➕ افزودن سرور جدید", callback_query_data="add_server")])
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت", callback_query_data="back_to_admin")])
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    except TelegramBadRequest:
+        await callback.answer()
 
-@router.callback_query(F.data == "admin_list_packages")
-async def admin_list_packages(callback: CallbackQuery):
-    if callback.from_user.id not in settings.ADMIN_IDS: return
-    db: Session = SessionLocal()
-    packages = db.query(Package).all()
-    db.close()
+@router.callback_query(F.data == "add_server")
+async def add_server_start(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "📝 لطفاً اطلاعات سرور را <b>دقیقاً</b> به فرمت زیر ارسال کنید:\n\n"
+        "`نام سرور|آدرس پنل با پورت|یوزرنیم|پسورد`\n\n"
+        "مثال:\n`Server1|http://178.105.165.200:2054|admin|admin123`",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.waiting_for_server_data)
+
+@router.message(AdminStates.waiting_for_server_data)
+async def save_server(message: Message, state: FSMContext):
+    if message.from_user.id not in settings.ADMIN_IDS:
+        return
+    
+    try:
+        parts = message.text.split("|")
+        if len(parts) != 4:
+            await message.answer("❌ فرمت ارسال اشتباه است. دوباره تلاش کنید.")
+            return
+        
+        name, url, user, password = parts[0].strip(), parts[1].strip(), parts[2].strip(), parts[3].strip()
+        
+        status_msg = await message.answer("🔄 <b>در حال بررسی و تست اتصال به پنل ثنایی...</b>")
+        
+        # تست اتصال واقعی با کدهای جدید sanaei.py
+        panel = SanaeiPanel(url, user, password)
+        login_success = await panel.login()
+        await panel.close()
+        
+        if not login_success:
+            await status_msg.edit_text("❌ <b>خطا در اتصال!</b> مشخصات ورود، آدرس یا پورت اشتباه است و پنل درخواست را رد کرد.")
+            await state.clear()
+            return
+            
+        # ذخیره در دیتابیس در صورت تایید مشخصات
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO servers (name, url, username, password) VALUES (?, ?, ?, ?)",
+            (name, url, user, password)
+        )
+        conn.commit()
+        conn.close()
+        
+        await status_msg.edit_text(f"✅ سرور <b>{name}</b> با موفقیت تست، تایید و متصل شد!")
+        await state.clear()
+    except Exception as e:
+        await message.answer(f"❌ خطای غیرمنتظره: {str(e)}")
+        await state.clear()
+
+@router.callback_query(F.data.startswith("del_srv_"))
+async def delete_server(callback: CallbackQuery):
+    server_id = callback.data.split("_")[2]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM servers WHERE id = ?", (server_id,))
+    conn.commit()
+    conn.close()
+    await callback.answer("✅ سرور حذف شد")
+    await list_servers(callback)
+
+@router.callback_query(F.data == "admin_packages")
+async def list_packages(callback: CallbackQuery):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, size_gb, days, price FROM packages")
+    packages = cursor.fetchall()
+    conn.close()
+
+    keyboard = []
+    text = "📦 <b>لیست پکیج‌های فروشی ربات:</b>\n\n"
     
     if not packages:
-        await callback.answer("❌ هیچ پکیجی تعریف نشده است.", show_alert=True)
-        return
+        text += "هیچ پکیجی تعریف نشده است."
+    for p in packages:
+        text += f"📦 پکیج: {p[1]} | حجم: {p[2]} گیگ | زمان: {p[3]} روز | قیمت: {p[4]} تومان\n\n"
+        keyboard.append([InlineKeyboardButton(text=f"🗑️ حذف پکیج {p[1]}", callback_query_data=f"del_pkg_{p[0]}")])
         
-    text = "📦 <b>لیست پکیج‌های تعریف شده:</b>\n\n"
-    for pkg in packages:
-        text += f"▪️ {pkg.title} | قیمت: {int(pkg.price):,} تومان | حجم: {pkg.volume_gb} گیگ | اعتبار: {pkg.days} روز\n"
-        
-    await callback.message.edit_text(text, reply_markup=get_admin_keyboard())
-
-@router.callback_query(F.data == "admin_stats")
-async def admin_stats(callback: CallbackQuery):
-    if callback.from_user.id not in settings.ADMIN_IDS: return
-    db: Session = SessionLocal()
-    total_users = db.query(User).count()
-    total_servers = db.query(ServerPanel).count()
-    db.close()
+    keyboard.append([InlineKeyboardButton(text="➕ افزودن پکیج جدید", callback_query_data="add_package")])
+    keyboard.append([InlineKeyboardButton(text="🔙 بازگشت", callback_query_data="back_to_admin")])
     
-    text = (
-        f"📊 <b>آمار کل سیستم زار وی‌پی‌ان</b>\n\n"
-        f"👥 تعداد کل کاربران ربات: <b>{total_users} نفر</b>\n"
-        f"🖥️ تعداد سرورهای متصل: <b>{total_servers} سرور</b>\n"
-    )
-    await callback.message.edit_text(text, reply_markup=get_admin_keyboard())
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    except TelegramBadRequest:
+        await callback.answer()
 
+@router.callback_query(F.data == "add_package")
+async def add_package_start(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "📝 اطلاعات پکیج جدید را به فرمت زیر بفرستید:\n\n"
+        "`نام پکیج|حجم به گیگ|تعداد روز|قیمت به تومان`\n\n"
+        "مثال:\n`پکیج نقره‌ای|30|30|50000`",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.waiting_for_package_data)
+
+@router.message(AdminStates.waiting_for_package_data)
+async def save_package(message: Message, state: FSMContext):
+    if message.from_user.id not in settings.ADMIN_IDS:
+        return
+    try:
+        parts = message.text.split("|")
+        if len(parts) != 4:
+            await message.answer("❌ فرمت اشتباه است. دوباره تلاش کنید.")
+            return
+        
+        name, size, days, price = parts[0].strip(), int(parts[1]), int(parts[2]), int(parts[3])
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO packages (name, size_gb, days, price) VALUES (?, ?, ?, ?)",
+            (name, size, days, price)
+        )
+        conn.commit()
+        conn.close()
+        
+        await message.answer(f"✅ پکیج <b>{name}</b> با موفقیت اضافه شد.")
+        await state.clear()
+    except Exception as e:
+        await message.answer(f"❌ خطا در قالب اعداد وارد شده: {str(e)}")
+        await state.clear()
+
+@router.callback_query(F.data.startswith("del_pkg_"))
+async def delete_package(callback: CallbackQuery):
+    pkg_id = callback.data.split("_")[2]
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM packages WHERE id = ?", (pkg_id,))
+    conn.commit()
+    conn.close()
+    await callback.answer("✅ پکیج حذف شد")
+    await list_packages(callback)
+
+@router.callback_query(F.data == "back_to_admin")
+async def back_to_admin(callback: CallbackQuery):
+    try:
+        await callback.message.edit_text("⚙️ <b>به پنل مدیریت زار وی‌پی‌ان خوش آمدید:</b>", reply_markup=get_admin_keyboard())
+    except TelegramBadRequest:
+        await callback.answer()
+
+@router.callback_query(F.data == "close_admin")
+async def close_admin(callback: CallbackQuery):
+    await callback.message.delete()
