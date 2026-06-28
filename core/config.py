@@ -1,21 +1,21 @@
+# FILE: core/config.py
+
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+# ========== BOT CONFIG ==========
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+API_ID = int(os.getenv("API_ID", "0"))
+API_HASH = os.getenv("API_HASH", "")
 
-# ۱. تنظیمات ربات تلگرام
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
+# ========== ADMIN ==========
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
-# ۲. تنظیمات اتصال به پنل‌های مرزبان و سنایی (Sanaei)
-PANEL_URL = os.getenv("PANEL_URL", "http://YOUR_PANEL_IP:8000")
-PANEL_USERNAME = os.getenv("PANEL_USERNAME", "admin")
-PANEL_PASSWORD = os.getenv("PANEL_PASSWORD", "password")
+# ========== DATABASE ==========
+DB_PATH = "zarvpn_web.db"
 
-# ۳. تنظیمات دیتابیس تحت وب
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./zarvpn_web.db")
+# ========== WEB PANEL ==========
+WEB_HOST = "0.0.0.0"
+WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
 
-# ۴. اطلاعات وب پنل مدیریت
-WEB_PORT = int(os.getenv("WEB_PORT", 8080))
-WEB_USERNAME = os.getenv("WEB_USERNAME", "admin")
-WEB_PASSWORD = os.getenv("WEB_PASSWORD", "zarvpn_admin")
+# ========== SECURITY ==========
+SECRET_KEY = os.getenv("SECRET_KEY", "zarvpn_secret_key")
