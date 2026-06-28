@@ -34,7 +34,8 @@ export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 uv pip install -r requirements.txt
 
 clear
-echo "🚀 Installation complete! Starting setup..."
+echo "🚀 Installation complete! Transferring to interactive environment..."
 echo "--------------------------------------------------"
-uv run python bot.py
 
+# حل مشکل EOFError: اجرای پایتون در ترمینال جاری سرور به صورت مستقیم
+exec uv run python bot.py
