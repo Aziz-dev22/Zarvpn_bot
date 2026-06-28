@@ -1,41 +1,44 @@
 #!/bin/bash
+clear
 echo "=================================================="
-echo "🎯 Starting ZarVPN Automatic Installation..."
+echo "🎯 ZarVPN Combined Setup (Bot + Web Panel)"
 echo "=================================================="
 
 sudo apt update -y
-
 if ! command -v uv &> /dev/null; then
-    echo "📦 Installing UV Package Manager..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
     source $HOME/.local/bin/env
-else
-    echo "✅ UV Package Manager is already installed."
 fi
 
 cd ~
-if [ -d "Zarvpn_bot" ]; then
-    echo "🔄 Old installation found. Removing..."
-    rm -rf Zarvpn_bot
-fi
-
-# کلون کردن مخزن گیت‌هاب شما
+rm -rf Zarvpn_bot
 git clone https://github.com/Aziz-dev22/Zarvpn_bot.git
 cd Zarvpn_bot
 
-# ایجاد محیط مجازی امن برای اجرای پایدار پایتون ۳.۱۲
 uv venv --python 3.12
 source .venv/bin/activate
-
-# دور زدن خطای کامپایل پایتون ۳.۱۴ در سرورهای جدید
 export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
-
-# نصب پیش‌نیازها
 uv pip install -r requirements.txt
 
 clear
-echo "🚀 Installation complete! Transferring to interactive environment..."
+echo "📝 تنظیمات پیکربندی اولیه پروژه عمومی:"
 echo "--------------------------------------------------"
+read -p "توکن ربات تلگرام را وارد کنید: " bot_token
+read -p "آیدی عددی ادمین تلگرام را وارد کنید: " admin_ids
+read -p "یوزرنیم دلخواه برای ورود به پنل تحت وب: " web_user
+read -p "پسورد دلخواه برای ورود به پنل تحت وب: " web_pass
 
-# حل مشکل EOFError: اجرای پایتون در ترمینال جاری سرور به صورت مستقیم
-exec uv run python bot.py
+cat << EOF > .env
+BOT_TOKEN="$bot_token"
+ADMIN_IDS="$admin_ids"
+WEB_HOST="0.0.0.0"
+WEB_PORT=8080
+WEB_USERNAME="$web_user"
+WEB_PASSWORD="$web_pass"
+EOF
+
+clear
+echo "✅ پروژه با موفقیت نصب و پیکربندی شد!"
+echo "🚀 در حال راه‌اندازی ربات و پنل تحت وب شیشه‌ای زار وی‌پی‌ان روی پورت 8080..."
+echo "--------------------------------------------------"
+uv run python bot.py
