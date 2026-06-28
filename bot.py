@@ -21,12 +21,22 @@ async def run_bot():
     logger.info("🤖 Telegram Bot is running...")
     await dp.start_polling(bot)
 
-def run_web():
+async def run_web():
     logger.info("🌐 Web Panel is starting...")
-    uvicorn.run(app, host=settings.WEB_HOST, port=settings.WEB_PORT)
+    # اجرای وب سرور به صورت نان-بلاکنیگ و استاندارد
+    config = uvicorn.Config(app, host=settings.WEB_HOST, port=settings.WEB_PORT, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
+
+async def main():
+    # اجرای کاملاً موازی و استاندارد هر دو بخش بدون تداخل لوپ پایتون
+    await asyncio.gather(
+        run_web(),
+        run_bot()
+    )
 
 if __name__ == "__main__":
-    # اجرای همزمان ربات تلگرام و وب‌پنل ادمین روی سرور
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, run_web)
-    loop.run_until_complete(run_bot())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Bot and Web Panel stopped.")
