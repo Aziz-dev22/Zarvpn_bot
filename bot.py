@@ -10,7 +10,7 @@ app = Client("zarvpn_bot", bot_token=config.TELEGRAM_TOKEN, api_id=23749219, api
 panel_manager = MultiPanelManager()
 
 async def is_subscribed(client, user_id):
-    if str(user_id) == str(config.ADMIN_ID): return True # بند ۸: حذف قفل برای ادمین
+    if str(user_id) == str(config.ADMIN_ID): return True
     async with aiosqlite.connect("zarvpn_web.db") as db:
         async with db.execute("SELECT value FROM settings WHERE key='channel_id'") as c: channel = (await c.fetchone())[0]
     try:
@@ -21,26 +21,27 @@ async def is_subscribed(client, user_id):
 async def get_user_menu(user_id):
     async with aiosqlite.connect("zarvpn_web.db") as db:
         async with db.execute("SELECT value FROM settings WHERE key='test_status'") as c: test_status = (await c.fetchone())[0]
-        async with db.execute("SELECT value FROM settings WHERE key='miniapp_url'") as c: m_url = (await c.fetchone())[0]
+        
+    # 🔥 حل مشکل مینی‌آپ: ست کردن آدرس واقعی مینی‌آپ بر بستر پورت وب سرور شما (8080 یا پورت فعال)
+    # به جای localhost یا 127.0.0.1، آدرس آی‌پورت عمومی سرور قرار می‌گیرد
+    server_ip = "178.105.165.200" # 👈 آی‌پورت واقعی سرور شما که در اسکرین‌شات بود
+    m_url = f"http://{server_ip}:8080" 
 
     buttons = []
-    # بند ۱: اگر تست فعال باشد تک دکمه در بالا قرار می‌گیرد، در غیر این صورت کاملاً محو می‌شود
     if test_status == "on":
         buttons.append([InlineKeyboardButton("🎁 دریافت تست رایگان", callback_data="get_free_test")])
         
-    # بند ۲: ردیف دوم خرید و مدیریت سرویس‌ها در کنار هم
     buttons.append([
         InlineKeyboardButton("🛍️ خرید اشتراک جدید", callback_data="buy_menu"),
         InlineKeyboardButton("🛠️ مدیریت سرویس‌ها", callback_data="manage_services")
     ])
     
-    # بند ۲: ردیف سوم کیف پول و زیرمجموعه‌گیری در کنار هم
     buttons.append([
         InlineKeyboardButton("💰 کیف پول و شارژ", callback_data="charge_menu"),
         InlineKeyboardButton("👥 زیرمجموعه‌گیری", callback_data="ref_menu")
     ])
     
-    # بند ۴: تبدیل بخش مدیریت و سرویس‌ها به مینی‌اپ فوق پیشرفته
+    # مینی‌اپ شیک کاربری و ادمین با آدرس ولید سرور
     buttons.append([InlineKeyboardButton("📱 ورود به مینی‌اپ کاربری", web_app=WebAppInfo(url=f"{m_url}/miniapp?user_id={user_id}"))])
     if str(user_id) == str(config.ADMIN_ID):
         buttons.append([InlineKeyboardButton("⚙️ پنل مینی‌اپ مدیریت کامل ادمین", web_app=WebAppInfo(url=f"{m_url}/"))])
@@ -74,7 +75,6 @@ async def callbacks(client: Client, call: CallbackQuery):
             btns.append([InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")])
             await call.edit_message_text(text, reply_markup=InlineKeyboardMarkup(btns))
 
-        # بند ۲: مدیریت کاربران درون ربات به صورت کاملاً شیشه‌ای
         elif call.data == "admin_bot_menu" and str(uid) == str(config.ADMIN_ID):
             btns = [
                 [InlineKeyboardButton("👥 لیست دکمه‌ای کاربران", callback_data="bot_manage_users")],
@@ -117,7 +117,6 @@ async def callbacks(client: Client, call: CallbackQuery):
             p_name = call.data.split("_")[2]
             await call.edit_message_text(f"📌 جهت اتصال دکمه‌ای، دستور زیر را بفرستید:\n\n`/connect {p_name} URL USER PASS`")
 
-# دستور فعال تایید اتصال دکمه‌ای درون ربات (بند ۱)
 @app.on_message(filters.command("connect") & filters.user(int(config.ADMIN_ID)))
 async def bot_cmd_connect(client, message):
     if len(message.command) < 5: return
