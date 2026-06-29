@@ -1,19 +1,22 @@
 #!/bin/bash
 
 echo "========================================"
-echo "    ZarVPN Updater Script v1.0.0"
+echo "    ZarVPN Automated OS Updater"
 echo "========================================"
 
-# دریافت آخرین تغییرات از گیت‌هاب
-echo "[..] Fetching latest changes from GitHub..."
+# ورود به محیط مجازی پایتون در صورت وجود
+if [ -d "venv" ]; then
+    source venv/bin/activate
+fi
+
+# دریافت آخرین تغییرات از گیت‌هاب شما
+echo "[..] Fetching latest codes from GitHub..."
 git pull origin main
 
-# آپدیت کردن پیش‌نیازها در صورت تغییر
-echo "[..] Updating python dependencies..."
+# آپدیت کتابخانه‌ها
+echo "[..] Updating dependencies..."
 pip install -r requirements.txt
 
-# پیام پایان عملیات
 echo "========================================"
-echo " [✓] ZarVPN updated successfully!"
-echo " [📌] Please restart your bot and web panel services."
+echo " [✓] ZarVPN has been updated successfully!"
 echo "========================================"
