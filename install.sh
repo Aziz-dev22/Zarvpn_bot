@@ -1,44 +1,46 @@
-#!/bin/bash
-clear
-echo "=================================================="
-echo "🎯 ZarVPN Combined Setup (Bot + Web Panel)"
-echo "=================================================="
+# install.py
+import os
+import secrets
 
-sudo apt update -y
-if ! command -v uv &> /dev/null; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    source $HOME/.local/bin/env
-fi
+def run_installer():
+    print("="*40)
+    print("    ZarVPN Installation Wizard    ")
+    print("="*40)
+    
+    bot_token = input("1. Enter Telegram Bot Token: ").strip()
+    admin_ids = input("2. Enter Admin Telegram IDs (separated by comma): ").strip()
+    
+    web_port = input("3. Enter Web Panel Port [Default: 8000]: ").strip() or "8000"
+    web_user = input("4. Enter Admin Web Username [Default: admin]: ").strip() or "admin"
+    web_pass = input("5. Enter Admin Web Password: ").strip()
+    
+    # تولید یک کلید سکرت امن به صورت خودکار برای سشن‌ها و JWT
+    secret_key = secrets.token_hex(32)
+    
+    env_content = f"""# Bot Configuration
+BOT_TOKEN={bot_token}
+ADMIN_IDS={admin_ids}
 
-cd ~
-rm -rf Zarvpn_bot
-git clone https://github.com/Aziz-dev22/Zarvpn_bot.git
-cd Zarvpn_bot
+# Web Panel Configuration
+WEB_HOST=0.0.0.0
+WEB_PORT={web_port}
+WEB_ADMIN_USERNAME={web_user}
+WEB_ADMIN_PASSWORD={web_pass}
+SECRET_KEY={secret_key}
 
-uv venv --python 3.12
-source .venv/bin/activate
-export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
-uv pip install -r requirements.txt
+# Database
+DATABASE_URL=sqlite+aiosqlite:///database/zarvpn.db
+"""
+    
+    # ایجاد پوشه دیتابیس در صورت عدم وجود
+    os.makedirs("database", exist_ok=True)
+    
+    with open(".env", "w", encoding="utf-8") as f:
+        f.write(env_content)
+        
+    print("\n" + "="*40)
+    print(" [✓] Configuration saved to .env successfully!")
+    print("="*40)
 
-clear
-echo "📝 تنظیمات پیکربندی اولیه پروژه عمومی:"
-echo "--------------------------------------------------"
-read -p "توکن ربات تلگرام را وارد کنید: " bot_token
-read -p "آیدی عددی ادمین تلگرام را وارد کنید: " admin_ids
-read -p "یوزرنیم دلخواه برای ورود به پنل تحت وب: " web_user
-read -p "پسورد دلخواه برای ورود به پنل تحت وب: " web_pass
-
-cat << EOF > .env
-BOT_TOKEN="$bot_token"
-ADMIN_IDS="$admin_ids"
-WEB_HOST="0.0.0.0"
-WEB_PORT=8050
-WEB_USERNAME="$web_user"
-WEB_PASSWORD="$web_pass"
-EOF
-
-clear
-echo "✅ پروژه با موفقیت نصب و پیکربندی شد!"
-echo "🚀 در حال راه‌اندازی ربات و پنل تحت وب شیشه‌ای زار وی‌پی‌ان روی پورت خالی 8050..."
-echo "--------------------------------------------------"
-uv run python bot.py
+if __name__ == "__main__":
+    run_installer()
