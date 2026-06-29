@@ -15,7 +15,7 @@ class User(Base):
     balance = Column(Float, default=0.0)       # موجودی کیف پول به تومان
     role = Column(String(50), default="user")  # user, admin
     is_banned = Column(Boolean, default=False)
-    referred_by = Column(Integer, nullable=True) # شناسه معرف
+    referred_by = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class InboundPanel(Base):
@@ -30,12 +30,23 @@ class InboundPanel(Base):
     password = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
 
+class Package(Base):
+    """پکیج‌های تعریف شده برای فروش"""
+    __tablename__ = 'packages'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)       # مثلاً ۱ ماهه ۲۰ گیگ
+    price = Column(Float, nullable=False)           # قیمت به تومان
+    volume_gb = Column(Integer, nullable=False)     # حجم به گیگابایت
+    expiry_days = Column(Integer, nullable=False)   # تعداد روز اعتبار
+    is_active = Column(Boolean, default=True)
+
 class Gateway(Base):
     """تنظیمات درگاه‌های صرافی ایرانی و ریالی"""
     __tablename__ = 'gateways'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False)       # نام صرافی یا درگاه
+    name = Column(String(100), nullable=False)
     api_key = Column(String(255), nullable=False)
     merchant_id = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
