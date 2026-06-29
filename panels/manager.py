@@ -1,28 +1,28 @@
-from abc import ABC, abstractmethod
+# panels/manager.py
+import aiohttp
+from panels.sanaei import SanaeiPanel
+# اگر مرزبان هم اضافه شود در آینده اینجا ایمپورت می‌شود
 
-class BasePanelManager(ABC):
-    """
-    یک قالب پایه برای تمام پنل‌های وی‌پی‌ان (ثنایی، مرزبان و غیره)
-    تمام کلاس‌های پنل باید از این کلاس ارث‌بری کنند و این متدها را داشته باشند.
-    """
+class PanelManager:
+    @staticmethod
+    def get_panel_client(panel_model):
+        """
+        بر اساس نوع پنل ذخیره شده در دیتابیس، شیء مناسب برای اتصال را برمی‌گرداند.
+        """
+        if panel_model.panel_type.lower() == "sanaei":
+            return SanaeiPanel(panel_model.api_url, panel_model.username, panel_model.password)
+        elif panel_model.panel_type.lower() == "marzban":
+            # در گام‌های بعدی متد مرزبان را اینجا کامل می‌کنیم
+            raise NotImplementedError("اتصال مرزبان در آپدیت بعدی اضافه می‌شود.")
+        else:
+            raise ValueError("نوع پنل ناشناخته است.")
 
-    @abstractmethod
-    async def login(self) -> bool:
-        """متد ورود به پنل و دریافت کوکی یا توکن"""
-        pass
-
-    @abstractmethod
-    async def create_user(self, email: str, data_limit_gb: int, expire_days: int) -> dict | None:
-        """متد ساخت یک کاربر جدید در پنل"""
-        pass
-
-    @abstractmethod
-    async def delete_user(self, email: str) -> bool:
-        """متd حذف کاربر از پنل"""
-        pass
-
-    @abstractmethod
-    async def get_user_info(self, email: str) -> dict | None:
-        """متد دریافت وضعیت حجم و زمان باقی‌مانده کاربر"""
-        pass
-
+    @staticmethod
+    async def test_connection(panel_model):
+        """تست اتصال واقعی به پنل"""
+        try:
+            client = PanelManager.get_panel_client(panel_model)
+            return await client.login()
+        except Exception as e:
+            print(f"Error testing panel connection: {e}")
+            return False
