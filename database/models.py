@@ -23,9 +23,9 @@ class InboundPanel(Base):
     __tablename__ = 'panels'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False)      # نام دلخواه سرور
-    panel_type = Column(String(50), nullable=False)  # sanaei یا marzban
-    api_url = Column(String(255), nullable=False)     # آدرس کامل به همراه پورت
+    name = Column(String(100), nullable=False)
+    panel_type = Column(String(50), nullable=False)
+    api_url = Column(String(255), nullable=False)
     username = Column(String(100), nullable=False)
     password = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
@@ -35,11 +35,22 @@ class Package(Base):
     __tablename__ = 'packages'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False)       # مثلاً ۱ ماهه ۲۰ گیگ
-    price = Column(Float, nullable=False)           # قیمت به تومان
-    volume_gb = Column(Integer, nullable=False)     # حجم به گیگابایت
-    expiry_days = Column(Integer, nullable=False)   # تعداد روز اعتبار
+    name = Column(String(100), nullable=False)
+    price = Column(Float, nullable=False)
+    volume_gb = Column(Integer, nullable=False)
+    expiry_days = Column(Integer, nullable=False)
     is_active = Column(Boolean, default=True)
+
+class Ticket(Base):
+    """جدول ثبت تیکت‌ها و پیام‌های پشتیبانی کاربران"""
+    __tablename__ = 'tickets'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False)          # تلگرام آی‌دی کابر
+    message_text = Column(Text, nullable=False)        # متن پیام کاربر
+    photo_id = Column(String(255), nullable=True)      # فایل آی‌دی تصویر فیش یا اسکرین‌شات
+    status = Column(String(50), default="open")       # open, answered, closed
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class Gateway(Base):
     """تنظیمات درگاه‌های صرافی ایرانی و ریالی"""
