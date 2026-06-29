@@ -1,31 +1,25 @@
+# core/logger.py
 import logging
 import os
-from logging.handlers import RotatingFileHandler
 
 # ایجاد پوشه لاگ در صورت عدم وجود
-log_dir = "database"
-if not os.path.exists(log_dir):
-    os.makedirs(log_dir, exist_ok=True)
+os.makedirs("logs", exist_ok=True)
 
-log_file = os.path.join(log_dir, "bot.log")
-
-# تنظیمات فرمت نمایش لاگ‌ها
-log_format = logging.Formatter(
-    fmt="%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S"
-)
-
-# ایجاد لاگر اصلی
-logger = logging.getLogger("ZarVPN_Logger")
+logger = logging.getLogger("ZarVPN")
 logger.setLevel(logging.INFO)
 
-# ۱. هندلر برای ذخیره در فایل (حداکثر ۵ مگابایت، سپس فایل جدید می‌سازد)
-file_handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8")
-file_handler.setFormatter(log_format)
-logger.addHandler(file_handler)
+# فرمت نمایش لاگ‌ها (زمان - سطح خطا - پیام)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
-# ۲. هندلر برای نمایش زنده در ترمینال
+# هندلر برای ذخیره در فایل
+file_handler = logging.FileHandler("logs/zarvpn.log", encoding="utf-8")
+file_handler.setFormatter(formatter)
+
+# هندلر برای نمایش در ترمینال
 stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(log_format)
-logger.addHandler(stream_handler)
+stream_handler.setFormatter(formatter)
 
+# اضافه کردن هندلرها به لاگر اصلی
+if not logger.handlers:
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
