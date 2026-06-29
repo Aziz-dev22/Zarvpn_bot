@@ -1,23 +1,14 @@
 import os
-from pydantic_settings import BaseSettings
+from dotenv import load_dotenv
 
-class Settings(BaseSettings):
-    BOT_TOKEN: str = ""
-    ADMIN_IDS: str = ""  # به صورت کاما جدا شده: 123,456
+load_dotenv()
+
+class Config:
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    ADMIN_IDS = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
     
-    # تنظیمات پنل تحت وب
-    WEB_HOST: str = "0.0.0.0"
-    WEB_PORT: int = 8000
-    WEB_USERNAME: str = "admin"
-    WEB_PASSWORD: str = "admin123"
-    SECRET_KEY: str = "zarvpn_super_secret_key_2026"
-
-    @property
-    def admin_id_list(self):
-        return [int(x.strip()) for x in self.ADMIN_IDS.split(",") if x.strip().isdigit()]
-
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
-
-settings = Settings()
+    WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
+    WEB_PORT = int(os.getenv("WEB_PORT", 8000))
+    SECRET_KEY = os.getenv("SECRET_KEY", "change-me-in-production")
+    
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///database/zarvpn.db")
