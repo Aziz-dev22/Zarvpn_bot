@@ -31,8 +31,7 @@ SECRET_KEY={secret_key}
 # Database
 DATABASE_URL=sqlite+aiosqlite:///database/zarvpn.db
 """
-    
-    # ایجاد پوشه دیتابیس در صورت عدم وجود
+   # ایجاد پوشه دیتابیس در صورت عدم وجود
     os.makedirs("database", exist_ok=True)
     
     with open(".env", "w", encoding="utf-8") as f:
@@ -44,3 +43,18 @@ DATABASE_URL=sqlite+aiosqlite:///database/zarvpn.db
 
 if __name__ == "__main__":
     run_installer()
+
+# این تیکه کد به انتهای فایل install.py اضافه می‌شود تا دیتابیس را هم بسازد
+import asyncio
+
+async def create_db_tables():
+    print(" [..] Creating database tables...")
+    from core.database import init_db
+    await init_db()
+
+# متد run_installer قبلی رو در یک تابع اصلی ترکیب می‌کنیم
+def main():
+    # ... کدهای گرفتن ورودی از کاربر که در مرحله قبل نوشتیم ...
+    
+    # بعد از ذخیره فایل env، جداول را می‌سازیم:
+    asyncio.run(create_db_tables())
