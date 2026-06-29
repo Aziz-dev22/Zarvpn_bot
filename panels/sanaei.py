@@ -1,59 +1,91 @@
-import httpx
-import uuid
-import secrets
+# panels/sanaei.py
+import aiohttp
 import json
-import re
-from core.logger import logger
 
 class SanaeiPanel:
-    def __init__(self, panel_url: str, username: str, password: str):
-        self.panel_url = panel_url.rstrip("/")
+    def __init__(self, api_url, username, password):
+        # حذف اسلش اضافی از آخر آدرس در صورت وجود
+        self.api_url = api_url.rstrip('/')
         self.username = username
         self.password = password
-        self.client = httpx.AsyncClient(timeout=20.0, verify=False)
         self.cookies = None
 
-    async def login(self) -> bool:
-        url = f"{self.panel_url}/panel/api/login"
+    async def login(self):
+        """ورود به پنل سنایی و دریافت کوکی سشن"""
+        url = f"{self.api_url}/login"
+        payload = {
+            "username": self.username,
+            "password": self.password
+        }
         try:
-            res = await self.client.post(url, data={"username": self.username, "password": self.password})
-            if res.status_code == 200:
-                data = res.json()
-                if data.get("success") is True:
-                    self.cookies = res.cookies
-                    return True
-            return False
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, data=payload, timeout=10) as response:
+                    if response.status == 200:
+                        res_json = await response.json()
+                        if res_json.get("success"):
+                            # ذخیره کوکی‌ها برای درخواست‌های بعدی
+                            self.cookies = response.cookies
+                            return True
+                    return False
         except Exception as e:
-            logger.error(f"Sanaei login failed: {str(e)}")
+            print(f"Sanaei Login Error: {e}")
             return False
 
-    async def create_user(self, email: str, data_limit_gb: int, expire_days: int) -> dict | None:
-        if not self.cookies and not await self.login(): 
-            return None
+    async def add_client(self, inbound_id, email, uuid, limit_ip=0, total_gb=0, expiry_days=0):
+        """ساخت یک کاربر جدید در یک اینباند مشخص"""
+        if not self.cookies:
+            await self.login()
             
-        client_uuid = str(uuid.uuid4())
-        sanitized = re.sub(r'[^a-zA-Z0-9]', '', email)
-        client_email = f"{sanitized or 'user'}_{secrets.token_hex(2)}"
-        bytes_limit = data_limit_gb * 1024 * 1024 * 1024
-        expiry_time = -(expire_days * 24 * 60 * 60 * 1000)
+        url = f"{self.api_url}/panel/api/inbounds/addClient"
         
-        client_settings = {
-            "id": client_uuid, "alterId": 0, "email": client_email,
-            "limitIp": 2, "totalGB": bytes_limit, "expiryTime": expiry_time,
-            "enable": True, "tgId": "", "subId": client_uuid
+        # محاسبه حجم به بایت
+        total_bytes = total_gb * 1024 * 1024 * 1024 if total_gb > 0 else 0
+        # محاسبه زمان انقضا به میلی‌ثانیه (Timestamp)
+        import time
+        expiry_time = int((time.time() + (expiry_days * 86400)) * 1000) if expiry_days > 0 else 0
+
+        client_setting = {
+            "id": uuid,
+            "alterId": 0,
+            "email": email,
+            "limitIp": limit_ip,
+            "totalGB": total_bytes,
+            "expiryTime": expiry_time,
+            "enable": True,
+            "tgId": "",
+            "subId": ""
         }
         
-        payload = {"id": 1, "settings": json.dumps({"clients": [client_settings]})}
-        url = f"{self.panel_url}/panel/api/inbounds/addClient"
+        payload = {
+            "id": inbound_id,
+            "settings": json.dumps({"clients": [client_setting]})
+        }
         
         try:
-            res = await self.client.post(url, json=payload, cookies=self.cookies)
-            if res.status_code == 200 and res.json().get("success") is True:
-                return {"email": client_email, "uuid": client_uuid, "sub_url": f"{self.panel_url}/sub/{client_uuid}"}
-            return None
+            async with aiohttp.ClientSession(cookies=self.cookies) as session:
+                async with session.post(url, json=payload, timeout=10) as response:
+                    if response.status == 200:
+                        res_json = await response.json()
+                        return res_json.get("success", False)
+                    return False
         except Exception as e:
-            logger.error(f"Sanaei create user failed: {str(e)}")
-            return None
+            print(f"Sanaei Add Client Error: {e}")
+            return False
 
-    async def close(self):
-        await self.client.aclose()
+    async def delete_client(self, inbound_id, client_uuid):
+        """حذف کاربر از پنل سنایی"""
+        if not self.cookies:
+            await self.login()
+            
+        url = f"{self.api_url}/panel/api/inbounds/{inbound_id}/delClient/{client_uuid}"
+        
+        try:
+            async with aiohttp.ClientSession(cookies=self.cookies) as session:
+                async with session.post(url, timeout=10) as response:
+                    if response.status == 200:
+                        res_json = await response.json()
+                        return res_json.get("success", False)
+                    return False
+        except Exception as e:
+            print(f"Sanaei Delete Client Error: {e}")
+            return False
