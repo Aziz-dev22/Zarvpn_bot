@@ -8,7 +8,7 @@ import uvicorn
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from core.config import settings
 from core.database import init_db
@@ -30,12 +30,12 @@ async def start_cmd(message: Message):
     except Exception as e:
         logger.error(f"Database error: {e}")
 
-    # ساخت دکمه‌های شیشه‌ای ۱۰۰٪ استاندارد با کالبک دیتای مشخص
+    # ساخت دکمه‌های شیشه‌ای استاندارد با کالبک دیتای مشخص
     b1 = InlineKeyboardButton(text="🛍️ خرید اشتراک جدید", callback_query_data="buy_service")
     b2 = InlineKeyboardButton(text="💰 کیف پول", callback_query_data="user_wallet")
     keyboard = [[b1], [b2]]
 
-    # بررسی ادمین به صورت متنی ساده و منعطف
+    # بررسی ادمین بودن به صورت متنی
     if str(user_id) in str(settings.ADMIN_IDS):
         token = jwt.encode(
             {"admin_id": user_id, "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=15)},
@@ -48,6 +48,15 @@ async def start_cmd(message: Message):
 
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await message.answer("🚀 <b>به ربات زار وی‌پی‌ان خوش آمدید!</b>\nلطفاً گزینه مورد نظر را انتخاب کنید:", reply_markup=markup)
+
+# هندلر پردازش کلیک روی دکمه‌های شیشه‌ای
+@dp.callback_query()
+async def handle_callbacks(callback: CallbackQuery):
+    if callback.data == "buy_service":
+        await callback.message.answer("🛒 <b>بخش خرید اشتراک:</b>\nدر حال حاضر پکیجی تعریف نشده است. از پنل وب اقدام به ثبت پکیج کنید.")
+    elif callback.data == "user_wallet":
+        await callback.message.answer("💰 <b>کیف پول شما:</b>\nموجودی حساب شما: 0 تومان")
+    await callback.answer()
 
 async def run_web():
     logger.info("🌐 Starting Web Panel on port 8050...")
@@ -69,7 +78,6 @@ async def run_bot():
     await dp.start_polling(bot)
 
 async def main():
-    # اجرای موازی و همزمان وب‌پنل و ربات
     await asyncio.gather(
         run_web(),
         run_bot()
