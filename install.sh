@@ -1,41 +1,29 @@
 #!/bin/bash
 
 echo "========================================"
-echo "    ZarVPN Automated OS Installer"
+echo "    ZarVPN Automated Installer (v1.0)"
 echo "========================================"
 
-# ایجاد و ورود به پوشه پروژه برای دانلود نشدن فایل‌ها در روت اصلی سرور
-mkdir -p Zarvpn_bot
-cd Zarvpn_bot
-
-# دانلود فایل‌های حیاتی مستقیماً از گیت‌هاب شما به درون پوشه
-echo "[..] Downloading core installation files from GitHub..."
-curl -sL -O https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/requirements.txt
-curl -sL -O https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/install.py
-curl -sL -O https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/update.sh
-
-# آپدیت مخازن لینوکس و نصب پایتون
+# آپدیت مخازن لینوکس و نصب پایتون و ابزارهای مورد نیاز
 echo "[..] Updating system packages and installing Python..."
 sudo apt update -y
-sudo apt install python3 python3-pip python3-venv git -y
+sudo apt install python3 python3-pip wget -y
 
-# ایجاد محیط مجازی پایتون
-echo "[..] Creating Python virtual environment..."
-python3 -m venv venv
-source venv/bin/activate
+# دانلود مستقیم و محلی فایل‌های پیش‌نیاز از گیت‌هاب شما در پوشه فعلی
+echo "[..] Downloading core installation files from GitHub..."
+wget -q -O requirements.txt https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/requirements.txt
+wget -q -O install.py https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/install.py
 
-# نصب کتابخانه‌های پایتون
-echo "[..] Installing required Python libraries..."
-pip install --upgrade pip
-pip install -r requirements.txt
-
+# دانلود فایل آپدیت لینوکس
+wget -q -O update.sh https://raw.githubusercontent.com/Aziz-dev22/Zarvpn_bot/main/update.sh
 chmod +x update.sh
 
-# حالا فایل وجود دارد و جادوگر بدون مشکل اجرا می‌شود
-echo "[..] Starting configuration wizard..."
-python install.py
+# نصب کتابخانه‌ها با دور زدن محدودیت لینوکس‌های جدید و اجرای جادوگر تنظیمات
+echo "[..] Installing dependencies & starting configuration wizard..."
+pip install -r requirements.txt --break-system-packages
+python3 install.py
 
 echo "========================================"
 echo " [✓] Installation process completed!"
-echo " [📌] You can now run 'python bot.py' and 'python web_panel.py'"
+echo " [📌] You can now run 'python3 bot.py' and 'python3 web_panel.py'"
 echo "========================================"
