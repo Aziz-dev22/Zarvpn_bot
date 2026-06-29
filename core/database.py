@@ -1,58 +1,38 @@
-import sqlite3
+# core/database.py
 import os
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from core.config import Config
+from database.models import Base
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "bot.db")
+# ایجاد موتور دیتابیس به صورت غیرهمزمان
+engine = create_async_engine(Config.DATABASE_URL, echo=False, future=True)
 
-def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+# کلاس ساخت سشن‌های دیتابیس
+AsyncSessionLocal = sessionmaker(
+    engine, 
+    class_=AsyncSession, 
+    expire_on_commit=False
+)
 
-def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    # جدول سرورها
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS servers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        url TEXT NOT NULL,
-        username TEXT NOT NULL,
-        password TEXT NOT NULL
-    )""")
-    
-    # جدول پکیج‌ها
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS packages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        size_gb INTEGER NOT NULL,
-        days INTEGER NOT NULL,
-        price INTEGER NOT NULL
-    )""")
-    
-    # جدول کاربران ربات
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        telegram_id INTEGER PRIMARY KEY,
-        username TEXT,
-        balance INTEGER DEFAULT 0,
-        referred_by INTEGER
-    )""")
-    
-    # جدول سفارشات و اشتراک‌ها
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id INTEGER,
-        email TEXT,
-        uuid TEXT,
-        sub_url TEXT,
-        package_name TEXT,
-        price INTEGER,
-        status TEXT DEFAULT 'active'
-    )""")
-    
-    conn.commit()
-    conn.close()
+async def init_db():
+    """ایجاد جداول دیتابیس در صورت عدم وجود"""
+    # اطمینان از وجود پوشه دیتابیس
+    db_dir = os.path.dirname(Config.DATABASE_URL.replace("sqlite+aiosqlite:///", ""))
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+        
+    async with engine.begin() as conn:
+        # ساخت تمام جداول تعریف شده در models.py
+        await conn.run_sync(Base.metadata.create_all)
+    print(" [✓] Database tables initialized successfully.")
+
+async def get_db():
+    """یک Generator برای استفاده از سشن دیتابیس در بخش‌های مختلف"""
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
