@@ -30,32 +30,42 @@ async def start_cmd(message: Message):
     except Exception as e:
         logger.error(f"Database error: {e}")
 
-    # ساخت دکمه‌های شیشه‌ای استاندارد با کالبک دیتای مشخص
+    # ✅ تعریف دکمه‌های شیشه‌ای استاندارد با callback_query_data مجزا
     b1 = InlineKeyboardButton(text="🛍️ خرید اشتراک جدید", callback_query_data="buy_service")
     b2 = InlineKeyboardButton(text="💰 کیف پول", callback_query_data="user_wallet")
     keyboard = [[b1], [b2]]
 
-    # بررسی ادمین بودن به صورت متنی
+    # بررسی ادمین بودن
     if str(user_id) in str(settings.ADMIN_IDS):
-        token = jwt.encode(
-            {"admin_id": user_id, "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=15)},
-            settings.SECRET_KEY, 
-            algorithm="HS256"
-        )
-        web_url = f"http://178.105.165.200:8050/login/token?token={token}"
-        b_admin = InlineKeyboardButton(text="⚙️ ورود مستقیم به پنل تحت وب", url=web_url)
-        keyboard.append([b_admin])
+        try:
+            token = jwt.encode(
+                {"admin_id": user_id, "exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=15)},
+                settings.SECRET_KEY, 
+                algorithm="HS256"
+            )
+            # 🔐 اصلاح امنیتی: به جای آی‌پی ثابت، آدرس از فایل تنظیمات سرور خوانده می‌شود
+            panel_host = getattr(settings, 'WEB_HOST', '178.105.165.200')
+            if panel_host == "0.0.0.0":
+                panel_host = "178.105.165.200"  # آی‌پی سرور شما برای اتصال خارج از سرور
+                
+            web_url = f"http://{panel_host}:8050/login/token?token={token}"
+            b_admin = InlineKeyboardButton(text="⚙️ ورود مستقیم به پنل تحت وب", url=web_url)
+            keyboard.append([b_admin])
+        except Exception as e:
+            logger.error(f"Error creating admin token: {e}")
 
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await message.answer("🚀 <b>به ربات زار وی‌پی‌ان خوش آمدید!</b>\nلطفاً گزینه مورد نظر را انتخاب کنید:", reply_markup=markup)
 
-# هندلر پردازش کلیک روی دکمه‌های شیشه‌ای
+# ✅ هندلر پردازش کلیک روی دکمه‌های شیشه‌ای (کالبک‌ها)
 @dp.callback_query()
 async def handle_callbacks(callback: CallbackQuery):
     if callback.data == "buy_service":
         await callback.message.answer("🛒 <b>بخش خرید اشتراک:</b>\nدر حال حاضر پکیجی تعریف نشده است. از پنل وب اقدام به ثبت پکیج کنید.")
     elif callback.data == "user_wallet":
         await callback.message.answer("💰 <b>کیف پول شما:</b>\nموجودی حساب شما: 0 تومان")
+    
+    # اعلام پایان لودینگ دکمه به تلگرام
     await callback.answer()
 
 async def run_web():
