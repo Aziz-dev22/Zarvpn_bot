@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="mb-6">
+    <h2 class="text-xl font-bold mb-4 flex items-center gap-2">💳 تنظیم درگاه پرداخت و API صرافی</h2>
+    
+    <div class="glass-card p-5">
+        <form action="/admin/gateways/add" method="POST" class="flex flex-col gap-4">
+            <div>
+                <label class="text-xs font-bold text-gray-500 block mb-1">نام درگاه یا صرافی ایرانی:</label>
+                <input type="text" name="name" placeholder="مثلا زرین‌پال، نوبیتکس، آیدی‌پِی" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-indigo-500" required>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-gray-500 block mb-1">کلید API (API Key):</label>
+                <input type="text" name="api_key" placeholder="API Key صرافی یا توکن درگاه" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-indigo-500 ltr text-left" required>
+            </div>
+            <div>
+                <label class="text-xs font-bold text-gray-500 block mb-1">کد مرچنت (Merchant ID - اختیاری):</label>
+                <input type="text" name="merchant_id" placeholder="در صورت نیاز وارد کنید" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-indigo-500 ltr text-left">
+            </div>
+            <button type="submit" class="w-full bg-emerald-600 text-white font-bold p-3 rounded-xl shadow-md hover:bg-emerald-700 transition">ثبت و فعال‌سازی درگاه</button>
+        </form>
+    </div>
+</section>
+
+<section>
+    <h3 class="text-md font-bold mb-3 text-gray-500">List درگاه‌های فعال</h3>
+    <div class="flex flex-col gap-3">
+        {% for gw in gateways %}
+        <div class="glass-card p-4 flex justify-between items-center">
+            <div>
+                <p class="font-bold text-sm text-emerald-700">✓ {{ gw.name }}</p>
+                <p class="text-[11px] text-gray-400 mt-1">تجهیز شده برای پرداخت‌های ربات تلگرام</p>
+            </div>
+            <span class="text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">فعال 🟢</span>
+        </div>
+        {% else %}
+        <p class="text-xs text-gray-400 text-center py-4">درگاهی ثبت نشده است. ربات در حالت پرداخت کارت به کارت دستی کار خواهد کرد.</p>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}
+
