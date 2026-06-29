@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="mb-6">
+    <h2 class="text-xl font-bold mb-4 flex items-center gap-2">⚡ دسترسی سریع</h2>
+    
+    <div class="bg-emerald-100 text-emerald-800 p-5 rounded-[24px] mb-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <span class="text-3xl">💰</span>
+            <div>
+                <p class="text-xs text-emerald-700">موجودی کل کیف پول‌ها</p>
+                <p class="text-xl font-black mt-1">{{ total_balance }} <span class="text-xs font-normal">تومان</span></p>
+            </div>
+        </div>
+        <button class="w-10 h-10 bg-emerald-200/50 rounded-xl text-xl font-bold flex items-center justify-center">+</button>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+        <div class="glass-card p-4">
+            <p class="text-xs text-gray-400 flex items-center gap-1">📊 تعداد کل کاربران</p>
+            <p class="text-lg font-bold mt-2 text-gray-700">{{ total_users }} نفر</p>
+        </div>
+        <div class="glass-card p-4">
+            <p class="text-xs text-gray-400 flex items-center gap-1">🔌 پنل‌های فعال</p>
+            <p class="text-lg font-bold mt-2 text-gray-700">{{ total_panels }} سرور</p>
+        </div>
+    </div>
+</section>
+
+<section class="mb-6">
+    <div class="grid grid-cols-3 gap-3">
+        <a href="/admin/users" class="glass-card p-4 flex flex-col items-center justify-center gap-2 text-center">
+            <span class="p-3 bg-indigo-50 rounded-2xl text-xl text-indigo-600">👥</span>
+            <span class="text-xs font-bold text-gray-600">کاربران</span>
+        </a>
+        <a href="/admin/panels" class="glass-card p-4 flex flex-col items-center justify-center gap-2 text-center">
+            <span class="p-3 bg-amber-50 rounded-2xl text-xl text-amber-600">🔧</span>
+            <span class="text-xs font-bold text-gray-600">مدیریت پنل‌ها</span>
+        </a>
+        <a href="/admin/gateways" class="glass-card p-4 flex flex-col items-center justify-center gap-2 text-center">
+            <span class="p-3 bg-emerald-50 rounded-2xl text-xl text-emerald-600">💵</span>
+            <span class="text-xs font-bold text-gray-600">تنظیمات مالی</span>
+        </a>
+    </div>
+</section>
+
+<section class="mb-6">
+    <h3 class="text-md font-bold mb-3 text-gray-500">آمارها</h3>
+    <div class="grid grid-cols-2 gap-4">
+        <div class="glass-card p-4 flex items-center gap-3">
+            <span class="text-2xl bg-purple-50 p-2 rounded-xl">📈</span>
+            <div>
+                <p class="text-xs font-bold text-gray-700">روند فروش</p>
+                <p class="text-[10px] text-gray-400">نمودار سود و فروش</p>
+            </div>
+        </div>
+        <div class="glass-card p-4 flex items-center gap-3">
+            <span class="text-2xl bg-sky-50 p-2 rounded-xl">📊</span>
+            <div>
+                <p class="text-xs font-bold text-gray-700">آمار کل</p>
+                <p class="text-[10px] text-gray-400">شاخص عملکردی</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
